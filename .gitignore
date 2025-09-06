@@ -1,0 +1,15 @@
+# Add .env file to prevent accidental inclusion of secrets
+.env
+
+# Rust output directories
+/target/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Operating system files
+.DS_Store
+Thumbs.db
