@@ -10,3 +10,4 @@ tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
 flux-types = { workspace = true }
 flux-database = { workspace = true }
+uuid = { workspace = true }

@@ -271,3 +271,33 @@ fn parse_subject_and_body(data: &str) -> (String, String) {
         body.to_string(),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_smtp_path, parse_subject_and_body};
+
+    #[test]
+    fn parse_smtp_path_handles_brackets_and_params() {
+        assert_eq!(
+            parse_smtp_path("<user@example.com>").as_deref(),
+            Some("user@example.com")
+        );
+        assert_eq!(
+            parse_smtp_path("<user@example.com> SIZE=123").as_deref(),
+            Some("user@example.com")
+        );
+        assert_eq!(
+            parse_smtp_path("user@example.com").as_deref(),
+            Some("user@example.com")
+        );
+        assert_eq!(parse_smtp_path(""), None);
+    }
+
+    #[test]
+    fn parse_subject_and_body_extracts_subject() {
+        let data = "From: a@example.com\r\nSubject: Hello\r\n\r\nBody line\r\n";
+        let (subject, body) = parse_subject_and_body(data);
+        assert_eq!(subject, "Hello");
+        assert_eq!(body, "Body line\r\n");
+    }
+}

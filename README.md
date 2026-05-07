@@ -38,6 +38,23 @@ cargo build
 cargo run -p flux-main
 ```
 
+## HTTP API
+
+- `POST /mailboxes` → creates a new temporary mailbox
+- `GET /mailboxes/{email_address}/emails` → lists emails for an active mailbox
+
+Examples (defaults to `HTTP_ADDR=0.0.0.0:8080`):
+
+```bash
+# Create a mailbox
+curl -X POST http://localhost:8080/mailboxes
+
+# Fetch emails (URL-encode the '@' as %40)
+curl http://localhost:8080/mailboxes/test%40tempmail.example.com/emails
+```
+
+Note: the SMTP server only accepts mail for mailboxes that exist and are not expired.
+
 ## Requirements
 
 - Rust (latest stable)
