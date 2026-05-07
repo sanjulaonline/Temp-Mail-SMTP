@@ -1,6 +1,6 @@
-# Temporary Mail SMTP Service
+# Phantom Mail
 
-A Rust-based temporary email service with SMTP server and HTTP API.
+> Temporary Email Service written in Rust. Create disposable email addresses instantly for your temporary needs.
 
 ## Features
 
