@@ -9,5 +9,8 @@ tracing = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+axum = { workspace = true }
+chrono = { workspace = true }
+rand = { workspace = true }
 flux-types = { workspace = true }
 flux-database = { workspace = true }

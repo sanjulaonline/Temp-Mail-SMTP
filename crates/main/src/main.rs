@@ -5,6 +5,8 @@ use dotenv::dotenv;
 use std::env;
 use tracing::{info, error};
 use tokio::task;
+use tokio::time;
+use std::time::Duration;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -34,6 +36,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let smtp_handle = task::spawn(async move {
         if let Err(e) = smtp_server.run(&smtp_addr).await {
             error!("SMTP server error: {}", e);
+        }
+    });
+
+    // Periodic cleanup of expired mailboxes
+    let cleanup_db = db.clone();
+    let cleanup_interval_secs: u64 = env::var("MAILBOX_CLEANUP_INTERVAL_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(60);
+
+    task::spawn(async move {
+        let mut interval = time::interval(Duration::from_secs(cleanup_interval_secs));
+        loop {
+            interval.tick().await;
+            match cleanup_db.delete_expired_mailboxes().await {
+                Ok(count) if count > 0 => info!("Deleted {} expired mailboxes", count),
+                Ok(_) => {}
+                Err(e) => error!("Failed to delete expired mailboxes: {}", e),
+            }
         }
     });
     

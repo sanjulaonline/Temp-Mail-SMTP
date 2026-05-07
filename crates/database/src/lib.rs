@@ -4,10 +4,12 @@ use tokio_postgres::{Client, NoTls, Error};
 use tracing::{info, error};
 use dotenv::dotenv;
 use std::env;
+use std::sync::Arc;
 use flux_types::{Email, TemporaryMailbox};
 
+#[derive(Clone)]
 pub struct Database {
-    client: Client,
+    client: Arc<Client>,
 }
 
 impl Database {
@@ -19,6 +21,7 @@ impl Database {
             
         info!("Connecting to database...");
         let (client, connection) = tokio_postgres::connect(&database_url, NoTls).await?;
+        let client = Arc::new(client);
         
         // Spawn the connection handler
         tokio::spawn(async move {
@@ -28,7 +31,7 @@ impl Database {
         });
         
         // Ensure the database is initialized
-        Self::init_database(&client).await?;
+        Self::init_database(client.as_ref()).await?;
         
         Ok(Self { client })
     }
@@ -51,7 +54,7 @@ impl Database {
                 subject TEXT NOT NULL,
                 body TEXT NOT NULL,
                 timestamp TIMESTAMPTZ NOT NULL,
-                FOREIGN KEY (recipient) REFERENCES mailboxes(email_address)
+                FOREIGN KEY (recipient) REFERENCES mailboxes(email_address) ON DELETE CASCADE
             );
         ").await?;
         
@@ -67,6 +70,15 @@ impl Database {
         ).await?;
         
         Ok(())
+    }
+
+    pub async fn mailbox_is_active(&self, email_address: &str) -> Result<bool, Error> {
+        let row = self.client.query_one(
+            "SELECT EXISTS(SELECT 1 FROM mailboxes WHERE email_address = $1 AND expires_at > NOW())",
+            &[&email_address],
+        ).await?;
+
+        Ok(row.get(0))
     }
     
     // Method to store an email
@@ -102,11 +114,17 @@ impl Database {
     
     // Method to delete expired mailboxes
     pub async fn delete_expired_mailboxes(&self) -> Result<u64, Error> {
+        // Ensure we can delete mailboxes even if an older schema uses a restrictive FK.
+        self.client.execute(
+            "DELETE FROM emails WHERE recipient IN (SELECT email_address FROM mailboxes WHERE expires_at < NOW())",
+            &[],
+        ).await?;
+
         let result = self.client.execute(
             "DELETE FROM mailboxes WHERE expires_at < NOW()",
             &[],
         ).await?;
-        
+
         Ok(result)
     }
 }
