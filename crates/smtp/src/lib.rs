@@ -9,6 +9,8 @@ use flux_types::Email;
 use chrono::Utc;
 use uuid::Uuid;
 
+const INITIAL_GREETING: &str = "Phantom Mail Service Ready";
+
 pub struct SmtpServer {
     db: Arc<Database>,
 }
@@ -52,7 +54,7 @@ async fn handle_smtp_connection(
     let (read_half, mut write_half) = socket.into_split();
     let mut reader = BufReader::new(read_half);
 
-    write_response(&mut write_half, 220, "Temp Mail SMTP Service ready").await?;
+    write_response(&mut write_half, 220, INITIAL_GREETING).await?;
 
     let mut mail_from: Option<String> = None;
     let mut rcpt_to: Vec<String> = Vec::new();

@@ -1,5 +1,5 @@
 [package]
-name = "flux-database"
+name = "phantom-database"
 version = "0.1.0"
 edition = "2021"
 
@@ -9,4 +9,4 @@ tokio-postgres = { workspace = true }
 tracing = { workspace = true }
 dotenv = { workspace = true }
 chrono = { workspace = true }
-flux-types = { workspace = true }
+phantom-types = { workspace = true }

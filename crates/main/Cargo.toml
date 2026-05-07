@@ -1,5 +1,5 @@
 [package]
-name = "flux-main"
+name = "phantom-main"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,7 +8,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 dotenv = { workspace = true }
-flux-database = { workspace = true }
-flux-http = { workspace = true }
-flux-smtp = { path = "../smtp" }
-flux-types = { workspace = true }
+phantom-database = { workspace = true }
+phantom-http = { workspace = true }
+phantom-smtp = { path = "../smtp" }
+phantom-types = { workspace = true }

@@ -1,5 +1,5 @@
 [package]
-name = "flux-smtp"
+name = "phantom-smtp"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,6 +8,6 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
-flux-types = { workspace = true }
-flux-database = { workspace = true }
+phantom-types = { workspace = true }
+phantom-database = { workspace = true }
 uuid = { workspace = true }

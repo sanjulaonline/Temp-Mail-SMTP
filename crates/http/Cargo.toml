@@ -1,5 +1,5 @@
 [package]
-name = "flux-http"
+name = "phantom-http"
 version = "0.1.0"
 edition = "2021"
 
@@ -12,5 +12,5 @@ serde_json = { workspace = true }
 axum = { workspace = true }
 chrono = { workspace = true }
 rand = { workspace = true }
-flux-types = { workspace = true }
-flux-database = { workspace = true }
+phantom-types = { workspace = true }
+phantom-database = { workspace = true }
