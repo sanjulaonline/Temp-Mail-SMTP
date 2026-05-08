@@ -1,0 +1,58 @@
+services:
+  # ── PostgreSQL ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: phantom
+      POSTGRES_PASSWORD: phantom
+      POSTGRES_DB: phantommail
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ../migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U phantom -d phantommail"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ── Mosquitto MQTT broker ────────────────────────────────────────────────────
+  mosquitto:
+    image: eclipse-mosquitto:2
+    restart: unless-stopped
+    ports:
+      - "1883:1883"   # MQTT
+      - "9001:9001"   # WebSocket
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+  # ── Phantom Mail app ─────────────────────────────────────────────────────────
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_started
+    ports:
+      - "25:25"       # SMTP
+      - "8080:8080"   # HTTP API
+    environment:
+      DATABASE_URL: postgres://phantom:phantom@postgres:5432/phantommail
+      SMTP_ADDR: 0.0.0.0:25
+      HTTP_ADDR: 0.0.0.0:8080
+      MAIL_DOMAIN: phantommail.example.com
+      MQTT_BROKER_URL: mqtt://mosquitto:1883
+      MAILBOX_CLEANUP_INTERVAL_SECS: 60
+
+volumes:
+  postgres_data:
+  mosquitto_data:
+  mosquitto_log:
