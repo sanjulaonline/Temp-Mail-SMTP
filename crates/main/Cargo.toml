@@ -12,3 +12,4 @@ phantom-database = { workspace = true }
 phantom-http = { workspace = true }
 phantom-smtp = { path = "../smtp" }
 phantom-types = { workspace = true }
+phantom-mqtt = { workspace = true }
