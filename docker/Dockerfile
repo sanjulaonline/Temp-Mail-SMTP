@@ -1,5 +1,9 @@
 # ── Stage 1: build ────────────────────────────────────────────────────────────
-FROM rust:1.78-slim AS builder
+FROM rust:1.86-slim AS builder
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends build-essential pkg-config libssl-dev ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -38,6 +42,7 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/phantom-main ./phantom-mail
 COPY migrations/ migrations/
+COPY web/ web/
 
 EXPOSE 25 8080
 

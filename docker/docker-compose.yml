@@ -51,6 +51,9 @@ services:
       MAIL_DOMAIN: phantommail.example.com
       MQTT_BROKER_URL: mqtt://mosquitto:1883
       MAILBOX_CLEANUP_INTERVAL_SECS: 60
+      WEB_DIR: /app/web
+    volumes:
+      - ../web:/app/web:ro
 
 volumes:
   postgres_data:
