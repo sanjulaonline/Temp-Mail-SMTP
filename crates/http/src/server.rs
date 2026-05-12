@@ -9,6 +9,7 @@ use axum::{
 };
 use chrono::Duration;
 use tokio::net::TcpListener;
+use tower_http::services::{ServeDir, ServeFile};
 use tracing::info;
 
 use phantom_database::Database;
@@ -35,18 +36,23 @@ impl HttpServer {
         }
     }
 
-    /// Bind to `addr` and serve the HTTP API.
+    /// Bind to `addr` and serve the HTTP API + static UI.
     pub async fn run(&self, addr: &str) -> Result<(), Box<dyn std::error::Error>> {
         let listener = TcpListener::bind(addr).await?;
         info!("HTTP server listening on {}", addr);
 
+        let web_dir = env::var("WEB_DIR").unwrap_or_else(|_| "web".to_string());
+
         let app = Router::new()
             .route("/mailboxes", post(create_mailbox_handler))
             .route("/mailboxes/:email_address/emails", get(get_emails_handler))
+            .nest_service("/", ServeDir::new(&web_dir)
+                .not_found_service(ServeFile::new(format!("{}/index.html", web_dir))))
             .with_state(self.state.clone());
 
         axum::serve(listener, app).await?;
         Ok(())
+
     }
 
     // ── Programmatic API (useful for tests / internal callers) ────────────────

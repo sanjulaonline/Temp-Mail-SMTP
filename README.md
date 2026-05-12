@@ -98,6 +98,36 @@ curl -X POST http://localhost:8080/mailboxes
 curl http://localhost:8080/mailboxes/test%40tempmail.example.com/emails
 ```
 
+## Next.js UI (optional)
+
+This repo includes a Next.js port of the UI in `web-next/` (based on `web/index.html`).
+The UI calls the same `/mailboxes` endpoints and proxies them to the Rust HTTP API via
+Next.js rewrites.
+
+### Run
+
+1) Start the Rust backend (HTTP on `:8080` by default):
+
+```bash
+cargo run -p phantom-main
+```
+
+2) Start the Next.js UI (HTTP on `:3000` by default):
+
+```bash
+cd web-next
+npm run dev
+```
+
+Open: `http://localhost:3000`
+
+If your backend is not on `http://localhost:8080`, set `BACKEND_HTTP_BASE_URL` (for example
+in `web-next/.env.local`):
+
+```bash
+BACKEND_HTTP_BASE_URL=http://localhost:8080
+```
+
 ## MQTT Events
 
 When `MQTT_BROKER_URL` is set, Phantom Mail publishes to **`phantom/mail/received`** on every inbound email:
