@@ -3,9 +3,11 @@
 use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, error};
 
 use phantom_mqtt::MqttPublisher;
+use phantom_types::Email;
 
 use crate::parser::{parse_smtp_path, read_smtp_data, store_received_email};
 use crate::store::DynMailStore;
@@ -23,6 +25,7 @@ pub(crate) async fn handle_smtp_connection(
     mail_domain: &str,
     tls_acceptor: Option<Arc<tokio_rustls::TlsAcceptor>>,
     publisher: Option<MqttPublisher>,
+    ml_tx: Option<UnboundedSender<Email>>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let offer_starttls = tls_acceptor.is_some();
     let (read_half, write_half) = socket.into_split();
@@ -36,13 +39,13 @@ pub(crate) async fn handle_smtp_connection(
         mail_domain,
         offer_starttls,
         publisher.as_ref(),
+        ml_tx.as_ref(),
     )
     .await?
     {
         SessionOutcome::Done => {}
         SessionOutcome::UpgradeToTls => {
             if let Some(acceptor) = tls_acceptor {
-                // Reunite the split halves so we can hand the TcpStream to rustls.
                 let read_half = reader.into_inner();
                 let tcp = read_half
                     .reunite(writer)
@@ -53,7 +56,6 @@ pub(crate) async fn handle_smtp_connection(
                 let mut tls_reader = BufReader::new(tls_read);
                 let mut tls_writer = tls_write;
 
-                // Post-TLS session: do not offer STARTTLS again.
                 run_smtp_session(
                     &store,
                     &mut tls_reader,
@@ -61,6 +63,7 @@ pub(crate) async fn handle_smtp_connection(
                     mail_domain,
                     false,
                     publisher.as_ref(),
+                    ml_tx.as_ref(),
                 )
                 .await?;
             }
@@ -83,6 +86,7 @@ async fn run_smtp_session<R, W>(
     mail_domain: &str,
     offer_starttls: bool,
     publisher: Option<&MqttPublisher>,
+    ml_tx: Option<&UnboundedSender<Email>>,
 ) -> Result<SessionOutcome, Box<dyn std::error::Error + Send + Sync>>
 where
     R: AsyncRead + Unpin,
@@ -197,6 +201,9 @@ where
             for recipient in &rcpt_to {
                 match store_received_email(store.as_ref(), from, recipient, &data).await {
                     Ok(email) => {
+                        if let Some(tx) = ml_tx {
+                            let _ = tx.send(email.clone());
+                        }
                         if let Some(pub_ref) = publisher {
                             pub_ref.publish_email_received(&email).await;
                         }
@@ -290,7 +297,7 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             let (sock, _) = listener.accept().await.unwrap();
-            handle_smtp_connection(store, sock, domain, None, None)
+            handle_smtp_connection(store, sock, domain, None, None, None)
                 .await
                 .ok();
         });

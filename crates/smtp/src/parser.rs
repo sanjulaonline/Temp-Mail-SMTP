@@ -98,6 +98,7 @@ pub(crate) async fn store_received_email(
         subject,
         body,
         timestamp: Utc::now(),
+        ml_meta: None,
     };
 
     store.store_email(&email).await?;

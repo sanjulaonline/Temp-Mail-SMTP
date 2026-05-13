@@ -13,3 +13,6 @@ phantom-http = { workspace = true }
 phantom-smtp = { path = "../smtp" }
 phantom-types = { workspace = true }
 phantom-mqtt = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

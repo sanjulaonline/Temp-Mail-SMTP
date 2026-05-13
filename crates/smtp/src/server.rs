@@ -3,10 +3,12 @@
 use std::sync::Arc;
 
 use tokio::net::TcpListener;
+use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, error, info, warn};
 
 use phantom_database::Database;
 use phantom_mqtt::MqttPublisher;
+use phantom_types::Email;
 
 use crate::connection::handle_smtp_connection;
 use crate::rate_limiter::RateLimiter;
@@ -18,6 +20,7 @@ pub struct SmtpServer {
     tls_acceptor: Option<Arc<tokio_rustls::TlsAcceptor>>,
     rate_limiter: Arc<RateLimiter>,
     publisher: Option<MqttPublisher>,
+    ml_tx: Option<UnboundedSender<Email>>,
 }
 
 impl SmtpServer {
@@ -28,6 +31,7 @@ impl SmtpServer {
         max_connections: usize,
         max_connections_per_ip: usize,
         publisher: Option<MqttPublisher>,
+        ml_tx: Option<UnboundedSender<Email>>,
     ) -> Self {
         Self {
             store: Arc::new(db),
@@ -35,6 +39,7 @@ impl SmtpServer {
             tls_acceptor,
             rate_limiter: Arc::new(RateLimiter::new(max_connections_per_ip, max_connections)),
             publisher,
+            ml_tx,
         }
     }
 
@@ -70,11 +75,13 @@ impl SmtpServer {
             let domain = Arc::clone(&self.mail_domain);
             let tls_acceptor = self.tls_acceptor.clone();
             let publisher = self.publisher.clone();
+            let ml_tx = self.ml_tx.clone();
 
             tokio::spawn(async move {
-                let _permit = permit; // dropped when the task ends, releasing the slot
+                let _permit = permit;
                 if let Err(e) =
-                    handle_smtp_connection(store, socket, &domain, tls_acceptor, publisher).await
+                    handle_smtp_connection(store, socket, &domain, tls_acceptor, publisher, ml_tx)
+                        .await
                 {
                     debug!("SMTP connection {peer_addr} ended with error: {e}");
                 }

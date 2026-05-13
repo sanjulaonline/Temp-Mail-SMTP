@@ -10,3 +10,4 @@ tracing = { workspace = true }
 dotenv = { workspace = true }
 chrono = { workspace = true }
 phantom-types = { workspace = true }
+serde_json = { workspace = true }

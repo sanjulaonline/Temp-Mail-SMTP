@@ -5,7 +5,7 @@ use dotenv::dotenv;
 use tokio_postgres::{Client, Error, NoTls};
 use tracing::{error, info};
 
-use phantom_types::{Email, TemporaryMailbox};
+use phantom_types::{Email, MlMeta, TemporaryMailbox};
 
 #[derive(Clone)]
 pub struct Database {
@@ -115,7 +115,7 @@ impl Database {
         let rows = self
             .client
             .query(
-                "SELECT id, sender, recipient, subject, body, timestamp \
+                "SELECT id, sender, recipient, subject, body, timestamp, ml_meta \
                  FROM emails WHERE recipient = $1 ORDER BY timestamp DESC",
                 &[&email_address],
             )
@@ -123,17 +123,37 @@ impl Database {
 
         let emails = rows
             .iter()
-            .map(|row| Email {
-                id: row.get(0),
-                sender: row.get(1),
-                recipient: row.get(2),
-                subject: row.get(3),
-                body: row.get(4),
-                timestamp: row.get(5),
+            .map(|row| {
+                let ml_meta_str: Option<String> = row.get(6);
+                Email {
+                    id: row.get(0),
+                    sender: row.get(1),
+                    recipient: row.get(2),
+                    subject: row.get(3),
+                    body: row.get(4),
+                    timestamp: row.get(5),
+                    ml_meta: ml_meta_str.and_then(|s| serde_json::from_str(&s).ok()),
+                }
             })
             .collect();
 
         Ok(emails)
+    }
+
+    /// Write ML sidecar results back to an email row.
+    pub async fn update_email_ml_meta(
+        &self,
+        id: &str,
+        meta: &MlMeta,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let json = serde_json::to_string(meta)?;
+        self.client
+            .execute(
+                "UPDATE emails SET ml_meta = $1 WHERE id = $2",
+                &[&json, &id],
+            )
+            .await?;
+        Ok(())
     }
 
     /// Delete all expired mailboxes and their associated emails. Returns the

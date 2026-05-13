@@ -1,7 +1,15 @@
-// This file will contain shared data types and structures used across the application
-
 use serde::{Deserialize, Serialize};
 use chrono::{DateTime, Utc};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MlMeta {
+    /// Extracted OTP / verification code, if any.
+    pub otp_code: Option<String>,
+    /// Spam probability 0.0–1.0.
+    pub spam_score: f32,
+    /// verification | newsletter | notification | receipt | other
+    pub category: String,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Email {
@@ -11,6 +19,9 @@ pub struct Email {
     pub subject: String,
     pub body: String,
     pub timestamp: DateTime<Utc>,
+    /// Populated asynchronously by the ML sidecar after the email is stored.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ml_meta: Option<MlMeta>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

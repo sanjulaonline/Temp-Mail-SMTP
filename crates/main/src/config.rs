@@ -19,6 +19,10 @@ pub struct Config {
     /// Set to `None` to disable MQTT publishing.
     pub mqtt_broker_url: Option<String>,
 
+    /// URL of the ML sidecar (e.g. `http://ml-sidecar:9000`).
+    /// Set to `None` to disable ML enrichment.
+    pub ml_sidecar_url: Option<String>,
+
     /// Path to the TLS certificate PEM file (e.g. `/etc/letsencrypt/live/…/fullchain.pem`).
     /// Both cert and key must be set to enable STARTTLS.
     pub smtp_tls_cert: Option<String>,
@@ -48,6 +52,7 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(60),
             mqtt_broker_url: env::var("MQTT_BROKER_URL").ok(),
+            ml_sidecar_url: env::var("ML_SIDECAR_URL").ok(),
             smtp_tls_cert: env::var("SMTP_TLS_CERT").ok(),
             smtp_tls_key: env::var("SMTP_TLS_KEY").ok(),
             smtp_max_connections: env::var("SMTP_MAX_CONNECTIONS")

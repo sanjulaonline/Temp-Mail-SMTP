@@ -5,6 +5,7 @@ use phantom_database::Database;
 use phantom_http::HttpServer;
 use phantom_mqtt::MqttPublisher;
 use phantom_smtp::{load_tls_acceptor, SmtpServer};
+use phantom_types::{Email, MlMeta};
 
 mod config;
 use config::Config;
@@ -72,6 +73,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    // ── ML sidecar (optional) ─────────────────────────────────────────────────
+    let ml_tx = if let Some(ref sidecar_url) = cfg.ml_sidecar_url {
+        info!("ML sidecar enabled at {}", sidecar_url);
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Email>();
+        let ml_db = db.clone();
+        let url = sidecar_url.clone();
+        tokio::spawn(run_ml_analysis(rx, ml_db, url));
+        Some(tx)
+    } else {
+        info!("ML_SIDECAR_URL not set — ML enrichment disabled");
+        None
+    };
+
     // ── SMTP server ───────────────────────────────────────────────────────────
     let smtp_server = SmtpServer::new(
         db.clone(),
@@ -80,6 +94,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         cfg.smtp_max_connections,
         cfg.smtp_max_connections_per_ip,
         mqtt_publisher,
+        ml_tx,
     );
     let smtp_addr = cfg.smtp_addr.clone();
     let smtp_handle = tokio::task::spawn(async move {
@@ -117,4 +132,69 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     info!("Shutting down Phantom Mail Service");
     Ok(())
+}
+
+// ── ML analysis task ──────────────────────────────────────────────────────────
+
+async fn run_ml_analysis(
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<Email>,
+    db: Database,
+    sidecar_url: String,
+) {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .expect("failed to build HTTP client");
+
+    while let Some(email) = rx.recv().await {
+        match call_sidecar(&client, &sidecar_url, &email).await {
+            Ok(meta) => {
+                if let Err(e) = db.update_email_ml_meta(&email.id, &meta).await {
+                    warn!("Failed to write ML meta for {}: {}", email.id, e);
+                }
+            }
+            Err(e) => warn!("ML sidecar error for {}: {}", email.id, e),
+        }
+    }
+}
+
+async fn call_sidecar(
+    client: &reqwest::Client,
+    url: &str,
+    email: &Email,
+) -> Result<MlMeta, Box<dyn std::error::Error + Send + Sync>> {
+    #[derive(serde::Serialize)]
+    struct Req<'a> {
+        id: &'a str,
+        sender: &'a str,
+        subject: &'a str,
+        body: &'a str,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Resp {
+        otp_code: Option<String>,
+        spam_score: f32,
+        category: String,
+    }
+
+    let resp = client
+        .post(format!("{}/analyse", url))
+        .json(&Req {
+            id: &email.id,
+            sender: &email.sender,
+            subject: &email.subject,
+            body: &email.body,
+        })
+        .send()
+        .await?
+        .error_for_status()?
+        .json::<Resp>()
+        .await?;
+
+    Ok(MlMeta {
+        otp_code: resp.otp_code,
+        spam_score: resp.spam_score,
+        category: resp.category,
+    })
 }

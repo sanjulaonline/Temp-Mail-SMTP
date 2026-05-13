@@ -30,6 +30,20 @@ services:
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
 
+  # ── ML sidecar ───────────────────────────────────────────────────────────────
+  ml-sidecar:
+    build:
+      context: ../ml-sidecar
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "9000:9000"   # ML analysis API
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   # ── Phantom Mail app ─────────────────────────────────────────────────────────
   app:
     build:
@@ -41,6 +55,8 @@ services:
         condition: service_healthy
       mosquitto:
         condition: service_started
+      ml-sidecar:
+        condition: service_healthy
     ports:
       - "25:25"       # SMTP
       - "8080:8080"   # HTTP API
@@ -52,6 +68,7 @@ services:
       MQTT_BROKER_URL: mqtt://mosquitto:1883
       MAILBOX_CLEANUP_INTERVAL_SECS: 60
       WEB_DIR: /app/web
+      ML_SIDECAR_URL: http://ml-sidecar:9000
     volumes:
       - ../web:/app/web:ro
 
