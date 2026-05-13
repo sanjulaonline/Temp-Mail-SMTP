@@ -11,12 +11,14 @@ use crate::connection::handle_smtp_connection;
 
 pub struct SmtpServer {
     db: Arc<Database>,
+    mail_domain: Arc<str>,
 }
 
 impl SmtpServer {
-    pub fn new(db: Database) -> Self {
+    pub fn new(db: Database, mail_domain: String) -> Self {
         Self {
             db: Arc::new(db),
+            mail_domain: Arc::from(mail_domain.as_str()),
         }
     }
 
@@ -37,8 +39,9 @@ impl SmtpServer {
             debug!("New SMTP connection from {}", peer_addr);
 
             let db = Arc::clone(&self.db);
+            let domain = Arc::clone(&self.mail_domain);
             tokio::spawn(async move {
-                if let Err(e) = handle_smtp_connection(db, socket).await {
+                if let Err(e) = handle_smtp_connection(db, socket, &domain).await {
                     debug!("SMTP connection {} ended with error: {}", peer_addr, e);
                 }
             });
