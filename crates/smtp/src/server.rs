@@ -8,16 +8,17 @@ use tracing::{debug, error, info};
 use phantom_database::Database;
 
 use crate::connection::handle_smtp_connection;
+use crate::store::DynMailStore;
 
 pub struct SmtpServer {
-    db: Arc<Database>,
+    store: DynMailStore,
     mail_domain: Arc<str>,
 }
 
 impl SmtpServer {
     pub fn new(db: Database, mail_domain: String) -> Self {
         Self {
-            db: Arc::new(db),
+            store: Arc::new(db),
             mail_domain: Arc::from(mail_domain.as_str()),
         }
     }
@@ -38,10 +39,10 @@ impl SmtpServer {
 
             debug!("New SMTP connection from {}", peer_addr);
 
-            let db = Arc::clone(&self.db);
+            let store = self.store.clone();
             let domain = Arc::clone(&self.mail_domain);
             tokio::spawn(async move {
-                if let Err(e) = handle_smtp_connection(db, socket, &domain).await {
+                if let Err(e) = handle_smtp_connection(store, socket, &domain).await {
                     debug!("SMTP connection {} ended with error: {}", peer_addr, e);
                 }
             });

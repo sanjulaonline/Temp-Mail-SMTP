@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // ── SMTP server ───────────────────────────────────────────────────────────
-    let smtp_server = SmtpServer::new(db.clone());
+    let smtp_server = SmtpServer::new(db.clone(), cfg.mail_domain.clone());
     let smtp_addr = cfg.smtp_addr.clone();
     let smtp_handle = tokio::task::spawn(async move {
         if let Err(e) = smtp_server.run(&smtp_addr).await {
@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     // ── HTTP API server ───────────────────────────────────────────────────────
-    let http_server = HttpServer::new(db);
+    let http_server = HttpServer::new(db, cfg.mail_domain.clone());
     let http_addr = cfg.http_addr.clone();
     let http_handle = tokio::task::spawn(async move {
         if let Err(e) = http_server.run(&http_addr).await {

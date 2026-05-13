@@ -4,8 +4,9 @@ use chrono::Utc;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use uuid::Uuid;
 
-use phantom_database::Database;
 use phantom_types::Email;
+
+use crate::store::MailStore;
 
 /// Read the DATA payload until the RFC 5321 end-of-data marker (`\r\n.\r\n`).
 pub(crate) async fn read_smtp_data(
@@ -82,7 +83,7 @@ pub(crate) fn parse_subject_and_body(data: &str) -> (String, String) {
 
 /// Parse and store one inbound email in the database.
 pub(crate) async fn store_received_email(
-    db: &Database,
+    store: &dyn MailStore,
     from: &str,
     to: &str,
     data: &str,
@@ -98,7 +99,7 @@ pub(crate) async fn store_received_email(
         timestamp: Utc::now(),
     };
 
-    db.store_email(&email).await?;
+    store.store_email(&email).await?;
     Ok(())
 }
 

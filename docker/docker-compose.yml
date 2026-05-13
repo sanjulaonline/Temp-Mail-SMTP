@@ -48,7 +48,7 @@ services:
       DATABASE_URL: postgres://phantom:phantom@postgres:5432/phantommail
       SMTP_ADDR: 0.0.0.0:25
       HTTP_ADDR: 0.0.0.0:8080
-      MAIL_DOMAIN: phantommail.example.com
+      MAIL_DOMAIN: sanjula.online
       MQTT_BROKER_URL: mqtt://mosquitto:1883
       MAILBOX_CLEANUP_INTERVAL_SECS: 60
       WEB_DIR: /app/web

@@ -1,6 +1,5 @@
 //! HTTP API server — binds the Axum router and exposes a programmatic API.
 
-use std::env;
 use std::sync::Arc;
 
 use axum::{
@@ -23,10 +22,7 @@ pub struct HttpServer {
 }
 
 impl HttpServer {
-    pub fn new(db: Database) -> Self {
-        let mail_domain =
-            env::var("MAIL_DOMAIN").unwrap_or_else(|_| "example.com".to_string());
-
+    pub fn new(db: Database, mail_domain: String) -> Self {
         Self {
             state: AppState {
                 db: Arc::new(db),
@@ -41,7 +37,7 @@ impl HttpServer {
         let listener = TcpListener::bind(addr).await?;
         info!("HTTP server listening on {}", addr);
 
-        let web_dir = env::var("WEB_DIR").unwrap_or_else(|_| "web".to_string());
+        let web_dir = std::env::var("WEB_DIR").unwrap_or_else(|_| "web".to_string());
 
         let app = Router::new()
             .route("/mailboxes", post(create_mailbox_handler))

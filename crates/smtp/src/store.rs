@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use phantom_types::{Email, TemporaryMailbox};
+use phantom_types::Email;
 
 /// Errors returned by [`MailStore`] operations.
 pub type StoreError = Box<dyn std::error::Error + Send + Sync>;

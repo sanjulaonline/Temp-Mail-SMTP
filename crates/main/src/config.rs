@@ -9,6 +9,9 @@ pub struct Config {
     /// Address the HTTP API server binds to (e.g. `0.0.0.0:8080`).
     pub http_addr: String,
 
+    /// The mail domain used in SMTP greetings and generated email addresses.
+    pub mail_domain: String,
+
     /// How often expired mailboxes are purged, in seconds.
     pub cleanup_interval_secs: u64,
 
@@ -25,6 +28,8 @@ impl Config {
                 .unwrap_or_else(|_| "0.0.0.0:25".to_string()),
             http_addr: env::var("HTTP_ADDR")
                 .unwrap_or_else(|_| "0.0.0.0:8080".to_string()),
+            mail_domain: env::var("MAIL_DOMAIN")
+                .unwrap_or_else(|_| "localhost".to_string()),
             cleanup_interval_secs: env::var("MAILBOX_CLEANUP_INTERVAL_SECS")
                 .ok()
                 .and_then(|v| v.parse().ok())
