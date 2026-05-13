@@ -11,3 +11,4 @@ chrono = { workspace = true }
 phantom-types = { workspace = true }
 phantom-database = { workspace = true }
 uuid = { workspace = true }
+async-trait = "0.1"
