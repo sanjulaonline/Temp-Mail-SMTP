@@ -18,6 +18,19 @@ pub struct Config {
     /// MQTT broker URL (e.g. `mqtt://localhost:1883`).
     /// Set to `None` to disable MQTT publishing.
     pub mqtt_broker_url: Option<String>,
+
+    /// Path to the TLS certificate PEM file (e.g. `/etc/letsencrypt/live/…/fullchain.pem`).
+    /// Both cert and key must be set to enable STARTTLS.
+    pub smtp_tls_cert: Option<String>,
+
+    /// Path to the TLS private key PEM file (e.g. `/etc/letsencrypt/live/…/privkey.pem`).
+    pub smtp_tls_key: Option<String>,
+
+    /// Maximum total concurrent SMTP connections.
+    pub smtp_max_connections: usize,
+
+    /// Maximum concurrent SMTP connections from a single IP address.
+    pub smtp_max_connections_per_ip: usize,
 }
 
 impl Config {
@@ -35,6 +48,16 @@ impl Config {
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(60),
             mqtt_broker_url: env::var("MQTT_BROKER_URL").ok(),
+            smtp_tls_cert: env::var("SMTP_TLS_CERT").ok(),
+            smtp_tls_key: env::var("SMTP_TLS_KEY").ok(),
+            smtp_max_connections: env::var("SMTP_MAX_CONNECTIONS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(100),
+            smtp_max_connections_per_ip: env::var("SMTP_MAX_CONNECTIONS_PER_IP")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(5),
         }
     }
 }

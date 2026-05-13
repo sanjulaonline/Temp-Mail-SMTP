@@ -4,7 +4,7 @@ use tracing::{error, info, warn};
 use phantom_database::Database;
 use phantom_http::HttpServer;
 use phantom_mqtt::MqttPublisher;
-use phantom_smtp::SmtpServer;
+use phantom_smtp::{load_tls_acceptor, SmtpServer};
 
 mod config;
 use config::Config;
@@ -30,9 +30,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // ── MQTT (optional) ───────────────────────────────────────────────────────
-    if let Some(ref broker_url) = cfg.mqtt_broker_url {
+    let mqtt_publisher: Option<MqttPublisher> = if let Some(ref broker_url) = cfg.mqtt_broker_url {
         match MqttPublisher::new(broker_url) {
-            Ok((_, mut event_loop)) => {
+            Ok((publisher, mut event_loop)) => {
                 info!("MQTT publisher connected to {}", broker_url);
                 tokio::spawn(async move {
                     loop {
@@ -42,15 +42,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                 });
+                Some(publisher)
             }
-            Err(e) => warn!("MQTT connection failed (continuing without it): {}", e),
+            Err(e) => {
+                warn!("MQTT connection failed (continuing without it): {}", e);
+                None
+            }
         }
     } else {
         info!("MQTT_BROKER_URL not set — MQTT publishing disabled");
-    }
+        None
+    };
+
+    // ── TLS (optional) ────────────────────────────────────────────────────────
+    let tls_acceptor = match (&cfg.smtp_tls_cert, &cfg.smtp_tls_key) {
+        (Some(cert), Some(key)) => match load_tls_acceptor(cert, key) {
+            Ok(acceptor) => {
+                info!("STARTTLS enabled (cert={})", cert);
+                Some(acceptor)
+            }
+            Err(e) => {
+                error!("Failed to load TLS config: {} — continuing without STARTTLS", e);
+                None
+            }
+        },
+        _ => {
+            info!("SMTP_TLS_CERT/SMTP_TLS_KEY not set — STARTTLS disabled");
+            None
+        }
+    };
 
     // ── SMTP server ───────────────────────────────────────────────────────────
-    let smtp_server = SmtpServer::new(db.clone(), cfg.mail_domain.clone());
+    let smtp_server = SmtpServer::new(
+        db.clone(),
+        cfg.mail_domain.clone(),
+        tls_acceptor,
+        cfg.smtp_max_connections,
+        cfg.smtp_max_connections_per_ip,
+        mqtt_publisher,
+    );
     let smtp_addr = cfg.smtp_addr.clone();
     let smtp_handle = tokio::task::spawn(async move {
         if let Err(e) = smtp_server.run(&smtp_addr).await {

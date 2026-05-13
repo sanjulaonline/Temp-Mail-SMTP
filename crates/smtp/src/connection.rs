@@ -1,22 +1,95 @@
 //! Per-connection SMTP session handler.
 
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use std::sync::Arc;
+
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tracing::{debug, error};
+
+use phantom_mqtt::MqttPublisher;
 
 use crate::parser::{parse_smtp_path, read_smtp_data, store_received_email};
 use crate::store::DynMailStore;
 
-/// Drive a single accepted TCP connection through the SMTP state machine.
+enum SessionOutcome {
+    Done,
+    UpgradeToTls,
+}
+
+/// Entry point for one accepted TCP connection.
+/// Performs the STARTTLS upgrade if an acceptor is provided and the client requests it.
 pub(crate) async fn handle_smtp_connection(
     store: DynMailStore,
     socket: tokio::net::TcpStream,
     mail_domain: &str,
+    tls_acceptor: Option<Arc<tokio_rustls::TlsAcceptor>>,
+    publisher: Option<MqttPublisher>,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let (read_half, mut write_half) = socket.into_split();
+    let offer_starttls = tls_acceptor.is_some();
+    let (read_half, write_half) = socket.into_split();
     let mut reader = BufReader::new(read_half);
+    let mut writer = write_half;
 
+    match run_smtp_session(
+        &store,
+        &mut reader,
+        &mut writer,
+        mail_domain,
+        offer_starttls,
+        publisher.as_ref(),
+    )
+    .await?
+    {
+        SessionOutcome::Done => {}
+        SessionOutcome::UpgradeToTls => {
+            if let Some(acceptor) = tls_acceptor {
+                // Reunite the split halves so we can hand the TcpStream to rustls.
+                let read_half = reader.into_inner();
+                let tcp = read_half
+                    .reunite(writer)
+                    .map_err(|_| "failed to reunite TCP halves for TLS upgrade")?;
+
+                let tls = acceptor.accept(tcp).await?;
+                let (tls_read, tls_write) = tokio::io::split(tls);
+                let mut tls_reader = BufReader::new(tls_read);
+                let mut tls_writer = tls_write;
+
+                // Post-TLS session: do not offer STARTTLS again.
+                run_smtp_session(
+                    &store,
+                    &mut tls_reader,
+                    &mut tls_writer,
+                    mail_domain,
+                    false,
+                    publisher.as_ref(),
+                )
+                .await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// RFC 5321 state machine, generic over any async reader/writer pair so it works
+/// identically over plain TCP and TLS streams.
+///
+/// Returns `SessionOutcome::UpgradeToTls` when the client sends STARTTLS and
+/// `offer_starttls` is true; the caller performs the handshake and calls this
+/// again on the TLS stream.
+async fn run_smtp_session<R, W>(
+    store: &DynMailStore,
+    reader: &mut BufReader<R>,
+    writer: &mut W,
+    mail_domain: &str,
+    offer_starttls: bool,
+    publisher: Option<&MqttPublisher>,
+) -> Result<SessionOutcome, Box<dyn std::error::Error + Send + Sync>>
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     let greeting = format!("{} ESMTP Phantom Mail", mail_domain);
-    write_response(&mut write_half, 220, &greeting).await?;
+    write_response(writer, 220, &greeting).await?;
 
     let mut mail_from: Option<String> = None;
     let mut rcpt_to: Vec<String> = Vec::new();
@@ -37,30 +110,39 @@ pub(crate) async fn handle_smtp_connection(
         let upper = line.to_ascii_uppercase();
 
         if upper == "QUIT" {
-            write_response(&mut write_half, 221, "Bye").await?;
+            write_response(writer, 221, "Bye").await?;
             break;
         }
 
         if upper.starts_with("HELO") {
             let reply = format!("{} OK", mail_domain);
-            write_response(&mut write_half, 250, &reply).await?;
+            write_response(writer, 250, &reply).await?;
             continue;
         }
 
         if upper.starts_with("EHLO") {
-            write_ehlo(&mut write_half, mail_domain).await?;
+            write_ehlo(writer, mail_domain, offer_starttls).await?;
             continue;
         }
 
+        if upper == "STARTTLS" {
+            if !offer_starttls {
+                write_response(writer, 502, "TLS not available").await?;
+                continue;
+            }
+            write_response(writer, 220, "Ready to start TLS").await?;
+            return Ok(SessionOutcome::UpgradeToTls);
+        }
+
         if upper == "NOOP" {
-            write_response(&mut write_half, 250, "OK").await?;
+            write_response(writer, 250, "OK").await?;
             continue;
         }
 
         if upper == "RSET" {
             mail_from = None;
             rcpt_to.clear();
-            write_response(&mut write_half, 250, "OK").await?;
+            write_response(writer, 250, "OK").await?;
             continue;
         }
 
@@ -69,7 +151,7 @@ pub(crate) async fn handle_smtp_connection(
             let addr = parse_smtp_path(raw).unwrap_or_default();
             mail_from = Some(addr);
             rcpt_to.clear();
-            write_response(&mut write_half, 250, "OK").await?;
+            write_response(writer, 250, "OK").await?;
             continue;
         }
 
@@ -78,51 +160,51 @@ pub(crate) async fn handle_smtp_connection(
                 .trim_start_matches(|c| c == ':' || c == ' ')
                 .trim();
             let Some(recipient) = parse_smtp_path(raw) else {
-                write_response(&mut write_half, 501, "Syntax: RCPT TO:<address>").await?;
+                write_response(writer, 501, "Syntax: RCPT TO:<address>").await?;
                 continue;
             };
 
             match store.mailbox_is_active(&recipient).await {
                 Ok(true) => {
                     rcpt_to.push(recipient);
-                    write_response(&mut write_half, 250, "OK").await?;
+                    write_response(writer, 250, "OK").await?;
                 }
                 Ok(false) => {
-                    write_response(&mut write_half, 550, "Mailbox not found or expired").await?;
+                    write_response(writer, 550, "Mailbox not found or expired").await?;
                 }
                 Err(e) => {
                     error!("Database error while validating recipient: {}", e);
-                    write_response(&mut write_half, 451, "Temporary server error").await?;
+                    write_response(writer, 451, "Temporary server error").await?;
                 }
             }
-
             continue;
         }
 
         if upper == "DATA" {
             let Some(from) = mail_from.as_deref() else {
-                write_response(&mut write_half, 503, "Bad sequence: MAIL FROM required").await?;
+                write_response(writer, 503, "Bad sequence: MAIL FROM required").await?;
                 continue;
             };
-
             if rcpt_to.is_empty() {
-                write_response(&mut write_half, 503, "Bad sequence: RCPT TO required").await?;
+                write_response(writer, 503, "Bad sequence: RCPT TO required").await?;
                 continue;
             }
 
-            write_response(
-                &mut write_half,
-                354,
-                "End data with <CR><LF>.<CR><LF>",
-            )
-            .await?;
+            write_response(writer, 354, "End data with <CR><LF>.<CR><LF>").await?;
+            let data = read_smtp_data(reader).await?;
 
-            let data = read_smtp_data(&mut reader).await?;
             let mut all_ok = true;
             for recipient in &rcpt_to {
-                if let Err(e) = store_received_email(store.as_ref(), from, recipient, &data).await {
-                    error!("Failed to store received email for {}: {}", recipient, e);
-                    all_ok = false;
+                match store_received_email(store.as_ref(), from, recipient, &data).await {
+                    Ok(email) => {
+                        if let Some(pub_ref) = publisher {
+                            pub_ref.publish_email_received(&email).await;
+                        }
+                    }
+                    Err(e) => {
+                        error!("Failed to store received email for {}: {}", recipient, e);
+                        all_ok = false;
+                    }
                 }
             }
 
@@ -130,22 +212,21 @@ pub(crate) async fn handle_smtp_connection(
             rcpt_to.clear();
 
             if all_ok {
-                write_response(&mut write_half, 250, "Message accepted").await?;
+                write_response(writer, 250, "Message accepted").await?;
             } else {
-                write_response(&mut write_half, 451, "Temporary server error").await?;
+                write_response(writer, 451, "Temporary server error").await?;
             }
-
             continue;
         }
 
-        write_response(&mut write_half, 502, "Command not implemented").await?;
+        write_response(writer, 502, "Command not implemented").await?;
     }
 
-    Ok(())
+    Ok(SessionOutcome::Done)
 }
 
-pub(crate) async fn write_response(
-    writer: &mut tokio::net::tcp::OwnedWriteHalf,
+async fn write_response<W: AsyncWrite + Unpin>(
+    writer: &mut W,
     code: u16,
     message: &str,
 ) -> Result<(), std::io::Error> {
@@ -154,15 +235,18 @@ pub(crate) async fn write_response(
     writer.write_all(response.as_bytes()).await
 }
 
-async fn write_ehlo(
-    writer: &mut tokio::net::tcp::OwnedWriteHalf,
+async fn write_ehlo<W: AsyncWrite + Unpin>(
+    writer: &mut W,
     domain: &str,
+    offer_starttls: bool,
 ) -> Result<(), std::io::Error> {
-    let response = format!(
-        "250-{}\r\n250-SIZE 10485760\r\n250 8BITMIME\r\n",
-        domain
-    );
-    debug!("SMTP >> 250 EHLO capabilities");
+    let mut response = format!("250-{}\r\n", domain);
+    if offer_starttls {
+        response.push_str("250-STARTTLS\r\n");
+    }
+    response.push_str("250-SIZE 10485760\r\n");
+    response.push_str("250 8BITMIME\r\n");
+    debug!("SMTP >> 250 EHLO capabilities (starttls={})", offer_starttls);
     writer.write_all(response.as_bytes()).await
 }
 
@@ -194,8 +278,7 @@ mod tests {
         Arc::new(MockStore { active })
     }
 
-    /// Spin up an in-process SMTP handler on a random port and return
-    /// a line-buffered reader and raw writer connected to it.
+    /// Spin up an in-process SMTP handler and return a connected reader/writer.
     async fn connect(
         store: DynMailStore,
         domain: &'static str,
@@ -207,7 +290,9 @@ mod tests {
         let addr = listener.local_addr().unwrap();
         tokio::spawn(async move {
             let (sock, _) = listener.accept().await.unwrap();
-            handle_smtp_connection(store, sock, domain).await.ok();
+            handle_smtp_connection(store, sock, domain, None, None)
+                .await
+                .ok();
         });
         let stream = TcpStream::connect(addr).await.unwrap();
         let (r, w) = stream.into_split();
@@ -224,11 +309,11 @@ mod tests {
         w.write_all(format!("{}\r\n", cmd).as_bytes()).await.unwrap();
     }
 
-    // Consume the 3-line EHLO multi-line response.
+    /// Consume the 3-line EHLO response (no TLS configured in tests).
     async fn read_ehlo(r: &mut BufReader<tokio::net::tcp::OwnedReadHalf>) {
-        readline(r).await;
-        readline(r).await;
-        readline(r).await;
+        readline(r).await; // 250-domain
+        readline(r).await; // 250-SIZE
+        readline(r).await; // 250 8BITMIME
     }
 
     #[tokio::test]
@@ -350,10 +435,42 @@ mod tests {
         let resp = readline(&mut r).await;
         assert!(resp.starts_with("250"), "RSET: {resp}");
 
-        // DATA without MAIL FROM should now fail
         send(&mut w, "DATA").await;
         let resp = readline(&mut r).await;
         assert!(resp.starts_with("503"), "expected 503 after RSET, got: {resp}");
+
+        send(&mut w, "QUIT").await;
+    }
+
+    #[tokio::test]
+    async fn starttls_returns_502_when_tls_not_configured() {
+        let (mut r, mut w) = connect(mock(true), "sanjula.online").await;
+        readline(&mut r).await; // 220
+
+        send(&mut w, "EHLO sender.test").await;
+        read_ehlo(&mut r).await;
+
+        send(&mut w, "STARTTLS").await;
+        let resp = readline(&mut r).await;
+        assert!(resp.starts_with("502"), "expected 502, got: {resp}");
+
+        send(&mut w, "QUIT").await;
+    }
+
+    #[tokio::test]
+    async fn ehlo_does_not_advertise_starttls_without_tls() {
+        let (mut r, mut w) = connect(mock(true), "sanjula.online").await;
+        readline(&mut r).await; // 220
+
+        send(&mut w, "EHLO client.test").await;
+        let line1 = readline(&mut r).await;
+        let line2 = readline(&mut r).await;
+        let line3 = readline(&mut r).await;
+
+        // Must be exactly 3 lines (no STARTTLS line inserted).
+        assert!(!line1.contains("STARTTLS"), "unexpected STARTTLS in: {line1}");
+        assert!(!line2.contains("STARTTLS"), "unexpected STARTTLS in: {line2}");
+        assert!(!line3.contains("STARTTLS"), "unexpected STARTTLS in: {line3}");
 
         send(&mut w, "QUIT").await;
     }

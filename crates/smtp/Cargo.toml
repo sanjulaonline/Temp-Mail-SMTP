@@ -10,5 +10,9 @@ tracing-subscriber = { workspace = true }
 chrono = { workspace = true }
 phantom-types = { workspace = true }
 phantom-database = { workspace = true }
+phantom-mqtt = { workspace = true }
 uuid = { workspace = true }
 async-trait = "0.1"
+tokio-rustls = { workspace = true }
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }

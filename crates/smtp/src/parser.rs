@@ -9,8 +9,8 @@ use phantom_types::Email;
 use crate::store::MailStore;
 
 /// Read the DATA payload until the RFC 5321 end-of-data marker (`\r\n.\r\n`).
-pub(crate) async fn read_smtp_data(
-    reader: &mut BufReader<tokio::net::tcp::OwnedReadHalf>,
+pub(crate) async fn read_smtp_data<R: tokio::io::AsyncRead + Unpin>(
+    reader: &mut BufReader<R>,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let mut data = String::new();
 
@@ -81,13 +81,14 @@ pub(crate) fn parse_subject_and_body(data: &str) -> (String, String) {
     )
 }
 
-/// Parse and store one inbound email in the database.
+/// Parse and store one inbound email. Returns the stored [`Email`] so callers
+/// can forward it to event publishers (e.g. MQTT) without re-building the struct.
 pub(crate) async fn store_received_email(
     store: &dyn MailStore,
     from: &str,
     to: &str,
     data: &str,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<Email, Box<dyn std::error::Error + Send + Sync>> {
     let (subject, body) = parse_subject_and_body(data);
 
     let email = Email {
@@ -100,7 +101,7 @@ pub(crate) async fn store_received_email(
     };
 
     store.store_email(&email).await?;
-    Ok(())
+    Ok(email)
 }
 
 #[cfg(test)]
