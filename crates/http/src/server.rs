@@ -1,6 +1,8 @@
 //! HTTP API server — binds the Axum router and exposes a programmatic API.
 
+use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration as StdDuration;
 
 use axum::{
     routing::{get, post},
@@ -14,6 +16,7 @@ use tracing::info;
 use phantom_database::Database;
 use phantom_types::{ApiResponse, Email, TemporaryMailbox};
 
+use crate::rate_limiter::RateLimiter;
 use crate::routes::{create_mailbox, create_mailbox_handler, get_emails, get_emails_handler};
 use crate::state::AppState;
 
@@ -28,6 +31,8 @@ impl HttpServer {
                 db: Arc::new(db),
                 mail_domain,
                 mailbox_ttl: Duration::hours(24),
+                // 20 mailbox creations per IP per minute
+                rate_limiter: RateLimiter::new(20, StdDuration::from_secs(60)),
             },
         }
     }
@@ -46,7 +51,11 @@ impl HttpServer {
                 .not_found_service(ServeFile::new(format!("{}/index.html", web_dir))))
             .with_state(self.state.clone());
 
-        axum::serve(listener, app).await?;
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await?;
         Ok(())
 
     }

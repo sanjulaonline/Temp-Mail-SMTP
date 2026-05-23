@@ -1,7 +1,10 @@
 //! Axum route handlers for the Phantom Mail HTTP API.
 
+use std::net::SocketAddr;
+
 use axum::{
-    extract::{Path, State},
+    extract::{ConnectInfo, Path, State},
+    http::StatusCode,
     Json,
 };
 use chrono::Utc;
@@ -13,9 +16,20 @@ use crate::state::AppState;
 // ── Handler shims ────────────────────────────────────────────────────────────
 
 pub(crate) async fn create_mailbox_handler(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<AppState>,
-) -> Json<ApiResponse<TemporaryMailbox>> {
-    Json(create_mailbox(&state).await)
+) -> (StatusCode, Json<ApiResponse<TemporaryMailbox>>) {
+    if !state.rate_limiter.check(addr.ip()) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some("Rate limit exceeded — try again in a minute".to_string()),
+            }),
+        );
+    }
+    (StatusCode::OK, Json(create_mailbox(&state).await))
 }
 
 pub(crate) async fn get_emails_handler(
@@ -24,6 +38,7 @@ pub(crate) async fn get_emails_handler(
 ) -> Json<ApiResponse<Vec<Email>>> {
     Json(get_emails(&state, &email_address).await)
 }
+
 
 // ── Business logic ───────────────────────────────────────────────────────────
 

@@ -6,9 +6,12 @@ use chrono::Duration;
 
 use phantom_database::Database;
 
+use crate::rate_limiter::RateLimiter;
+
 #[derive(Clone)]
 pub(crate) struct AppState {
     pub(crate) db: Arc<Database>,
     pub(crate) mail_domain: String,
     pub(crate) mailbox_ttl: Duration,
+    pub(crate) rate_limiter: RateLimiter,
 }
