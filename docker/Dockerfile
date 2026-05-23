@@ -42,7 +42,6 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/phantom-main ./phantom-mail
 COPY migrations/ migrations/
-COPY web/ web/
 
 EXPOSE 25 8080
 

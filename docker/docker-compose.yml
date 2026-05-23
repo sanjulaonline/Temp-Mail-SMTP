@@ -83,7 +83,6 @@ services:
       # MQTT_BROKER_URL: mqtt://mosquitto:1883
       # ML_SIDECAR_URL: http://ml-sidecar:9000
     volumes:
-      - ../web:/app/web:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
     deploy:
       resources:
