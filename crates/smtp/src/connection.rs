@@ -40,6 +40,7 @@ pub(crate) async fn handle_smtp_connection(
         offer_starttls,
         publisher.as_ref(),
         ml_tx.as_ref(),
+        true, // send_greeting
     )
     .await?
     {
@@ -56,6 +57,7 @@ pub(crate) async fn handle_smtp_connection(
                 let mut tls_reader = BufReader::new(tls_read);
                 let mut tls_writer = tls_write;
 
+                // After STARTTLS the session resumes — no new 220 banner.
                 run_smtp_session(
                     &store,
                     &mut tls_reader,
@@ -64,6 +66,7 @@ pub(crate) async fn handle_smtp_connection(
                     false,
                     publisher.as_ref(),
                     ml_tx.as_ref(),
+                    false, // send_greeting
                 )
                 .await?;
             }
@@ -87,13 +90,16 @@ async fn run_smtp_session<R, W>(
     offer_starttls: bool,
     publisher: Option<&MqttPublisher>,
     ml_tx: Option<&UnboundedSender<Email>>,
+    send_greeting: bool,
 ) -> Result<SessionOutcome, Box<dyn std::error::Error + Send + Sync>>
 where
     R: AsyncRead + Unpin,
     W: AsyncWrite + Unpin,
 {
-    let greeting = format!("{} ESMTP Phantom Mail", mail_domain);
-    write_response(writer, 220, &greeting).await?;
+    if send_greeting {
+        let greeting = format!("{} ESMTP Phantom Mail", mail_domain);
+        write_response(writer, 220, &greeting).await?;
+    }
 
     let mut mail_from: Option<String> = None;
     let mut rcpt_to: Vec<String> = Vec::new();
