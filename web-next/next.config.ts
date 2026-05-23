@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   async rewrites() {
     const backendBaseUrl =
       process.env.BACKEND_HTTP_BASE_URL ?? "http://localhost:8080";

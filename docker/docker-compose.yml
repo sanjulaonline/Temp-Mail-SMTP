@@ -58,6 +58,24 @@ services:
         limits:
           memory: 256M
 
+  # ── Next.js frontend (optional — needs ~300MB RAM) ───────────────────────────
+  web:
+    build:
+      context: ../web-next
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    profiles: ["full"]
+    ports:
+      - "3000:3000"
+    environment:
+      BACKEND_HTTP_BASE_URL: http://app:8080
+    depends_on:
+      - app
+    deploy:
+      resources:
+        limits:
+          memory: 350M
+
   # ── Phantom Mail app ─────────────────────────────────────────────────────────
   app:
     build:
