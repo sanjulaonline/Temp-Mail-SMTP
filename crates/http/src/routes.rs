@@ -8,10 +8,18 @@ use axum::{
     Json,
 };
 use chrono::Utc;
+use serde::Deserialize;
 
 use phantom_types::{ApiResponse, Email, TemporaryMailbox};
 
 use crate::state::AppState;
+
+#[derive(Deserialize)]
+pub(crate) struct SendRequest {
+    pub to: String,
+    pub subject: String,
+    pub body: String,
+}
 
 // ── Handler shims ────────────────────────────────────────────────────────────
 
@@ -37,6 +45,47 @@ pub(crate) async fn get_emails_handler(
     State(state): State<AppState>,
 ) -> Json<ApiResponse<Vec<Email>>> {
     Json(get_emails(&state, &email_address).await)
+}
+
+pub(crate) async fn send_email_handler(
+    Path(email_address): Path<String>,
+    State(state): State<AppState>,
+    Json(req): Json<SendRequest>,
+) -> (StatusCode, Json<ApiResponse<()>>) {
+    // Verify the sender mailbox exists and is active
+    match state.db.mailbox_is_active(&email_address).await {
+        Ok(true) => {}
+        Ok(false) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(ApiResponse { success: false, data: None, error: Some("Mailbox not found or expired".into()) }),
+            );
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse { success: false, data: None, error: Some(e.to_string()) }),
+            );
+        }
+    }
+
+    let Some(mailer) = &state.mailer else {
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(ApiResponse { success: false, data: None, error: Some("Outbound mail is not configured".into()) }),
+        );
+    };
+
+    match mailer.send(&email_address, &req.to, &req.subject, &req.body).await {
+        Ok(()) => (
+            StatusCode::OK,
+            Json(ApiResponse { success: true, data: Some(()), error: None }),
+        ),
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            Json(ApiResponse { success: false, data: None, error: Some(e.to_string()) }),
+        ),
+    }
 }
 
 

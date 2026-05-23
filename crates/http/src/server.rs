@@ -14,10 +14,11 @@ use tower_http::services::{ServeDir, ServeFile};
 use tracing::info;
 
 use phantom_database::Database;
+use phantom_smtp::OutboundMailer;
 use phantom_types::{ApiResponse, Email, TemporaryMailbox};
 
 use crate::rate_limiter::RateLimiter;
-use crate::routes::{create_mailbox, create_mailbox_handler, get_emails, get_emails_handler};
+use crate::routes::{create_mailbox, create_mailbox_handler, get_emails, get_emails_handler, send_email_handler};
 use crate::state::AppState;
 
 pub struct HttpServer {
@@ -25,14 +26,14 @@ pub struct HttpServer {
 }
 
 impl HttpServer {
-    pub fn new(db: Database, mail_domain: String) -> Self {
+    pub fn new(db: Database, mail_domain: String, mailer: Option<OutboundMailer>) -> Self {
         Self {
             state: AppState {
                 db: Arc::new(db),
                 mail_domain,
                 mailbox_ttl: Duration::hours(24),
-                // 20 mailbox creations per IP per minute
                 rate_limiter: RateLimiter::new(20, StdDuration::from_secs(60)),
+                mailer: mailer.map(Arc::new),
             },
         }
     }
@@ -47,6 +48,7 @@ impl HttpServer {
         let app = Router::new()
             .route("/mailboxes", post(create_mailbox_handler))
             .route("/mailboxes/:email_address/emails", get(get_emails_handler))
+            .route("/mailboxes/:email_address/send", post(send_email_handler))
             .nest_service("/", ServeDir::new(&web_dir)
                 .not_found_service(ServeFile::new(format!("{}/index.html", web_dir))))
             .with_state(self.state.clone());

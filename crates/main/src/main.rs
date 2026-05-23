@@ -4,7 +4,7 @@ use tracing::{error, info, warn};
 use phantom_database::Database;
 use phantom_http::HttpServer;
 use phantom_mqtt::MqttPublisher;
-use phantom_smtp::{load_tls_acceptor, SmtpServer};
+use phantom_smtp::{load_tls_acceptor, OutboundMailer, SmtpServer};
 use phantom_types::{Email, MlMeta};
 
 mod config;
@@ -119,8 +119,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    // ── Outbound mailer (optional) ────────────────────────────────────────────
+    let mailer = match (&cfg.dkim_private_key_path, &cfg.dkim_selector) {
+        (Some(key_path), Some(selector)) => match std::fs::read_to_string(key_path) {
+            Ok(pem) => {
+                info!("Outbound mail enabled (DKIM selector={})", selector);
+                Some(OutboundMailer::new(cfg.mail_domain.clone(), selector.clone(), pem))
+            }
+            Err(e) => {
+                error!("Failed to read DKIM key {}: {} — outbound mail disabled", key_path, e);
+                None
+            }
+        },
+        _ => {
+            info!("DKIM_PRIVATE_KEY_PATH/DKIM_SELECTOR not set — outbound mail disabled");
+            None
+        }
+    };
+
     // ── HTTP API server ───────────────────────────────────────────────────────
-    let http_server = HttpServer::new(db, cfg.mail_domain.clone());
+    let http_server = HttpServer::new(db, cfg.mail_domain.clone(), mailer);
     let http_addr = cfg.http_addr.clone();
     let http_handle = tokio::task::spawn(async move {
         if let Err(e) = http_server.run(&http_addr).await {

@@ -30,6 +30,12 @@ pub struct Config {
     /// Path to the TLS private key PEM file (e.g. `/etc/letsencrypt/live/…/privkey.pem`).
     pub smtp_tls_key: Option<String>,
 
+    /// Path to the DKIM private key PEM file (PKCS#8 RSA, set with `dkim_selector` to enable sending).
+    pub dkim_private_key_path: Option<String>,
+
+    /// DKIM selector — must match the DNS TXT record `{selector}._domainkey.{domain}`.
+    pub dkim_selector: Option<String>,
+
     /// Maximum total concurrent SMTP connections.
     pub smtp_max_connections: usize,
 
@@ -55,6 +61,8 @@ impl Config {
             ml_sidecar_url: env::var("ML_SIDECAR_URL").ok(),
             smtp_tls_cert: env::var("SMTP_TLS_CERT").ok(),
             smtp_tls_key: env::var("SMTP_TLS_KEY").ok(),
+            dkim_private_key_path: env::var("DKIM_PRIVATE_KEY_PATH").ok(),
+            dkim_selector: env::var("DKIM_SELECTOR").ok(),
             smtp_max_connections: env::var("SMTP_MAX_CONNECTIONS")
                 .ok()
                 .and_then(|v| v.parse().ok())

@@ -5,6 +5,7 @@ use std::sync::Arc;
 use chrono::Duration;
 
 use phantom_database::Database;
+use phantom_smtp::OutboundMailer;
 
 use crate::rate_limiter::RateLimiter;
 
@@ -14,4 +15,5 @@ pub(crate) struct AppState {
     pub(crate) mail_domain: String,
     pub(crate) mailbox_ttl: Duration,
     pub(crate) rate_limiter: RateLimiter,
+    pub(crate) mailer: Option<Arc<OutboundMailer>>,
 }

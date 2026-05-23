@@ -97,12 +97,15 @@ services:
       WEB_DIR: /app/web
       SMTP_TLS_CERT: /etc/letsencrypt/live/mail.phantom-mail.sanjula.online/fullchain.pem
       SMTP_TLS_KEY: /etc/letsencrypt/live/mail.phantom-mail.sanjula.online/privkey.pem
+      DKIM_PRIVATE_KEY_PATH: /etc/dkim/private.pem
+      DKIM_SELECTOR: mail
       RUST_LOG: debug
       # Uncomment when running with --profile full:
       # MQTT_BROKER_URL: mqtt://mosquitto:1883
       # ML_SIDECAR_URL: http://ml-sidecar:9000
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /etc/dkim:/etc/dkim:ro
     deploy:
       resources:
         limits:
