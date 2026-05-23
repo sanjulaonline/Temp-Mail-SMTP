@@ -33,6 +33,8 @@ impl HttpServer {
                 mail_domain,
                 mailbox_ttl: Duration::hours(24),
                 rate_limiter: RateLimiter::new(20, StdDuration::from_secs(60)),
+                send_rate_limiter: RateLimiter::new(5, StdDuration::from_secs(60)),
+                read_rate_limiter: RateLimiter::new(60, StdDuration::from_secs(60)),
                 mailer: mailer.map(Arc::new),
             },
         }

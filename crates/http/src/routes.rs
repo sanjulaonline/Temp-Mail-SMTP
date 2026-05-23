@@ -14,6 +14,8 @@ use phantom_types::{ApiResponse, Email, TemporaryMailbox};
 
 use crate::state::AppState;
 
+const MAX_SEND_BODY_BYTES: usize = 50 * 1024; // 50 KB
+
 #[derive(Deserialize)]
 pub(crate) struct SendRequest {
     pub to: String,
@@ -41,17 +43,43 @@ pub(crate) async fn create_mailbox_handler(
 }
 
 pub(crate) async fn get_emails_handler(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(email_address): Path<String>,
     State(state): State<AppState>,
-) -> Json<ApiResponse<Vec<Email>>> {
-    Json(get_emails(&state, &email_address).await)
+) -> (StatusCode, Json<ApiResponse<Vec<Email>>>) {
+    if !state.read_rate_limiter.check(addr.ip()) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                error: Some("Rate limit exceeded — try again in a minute".to_string()),
+            }),
+        );
+    }
+    (StatusCode::OK, Json(get_emails(&state, &email_address).await))
 }
 
 pub(crate) async fn send_email_handler(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(email_address): Path<String>,
     State(state): State<AppState>,
     Json(req): Json<SendRequest>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
+    if !state.send_rate_limiter.check(addr.ip()) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(ApiResponse { success: false, data: None, error: Some("Rate limit exceeded — max 5 sends per minute".into()) }),
+        );
+    }
+
+    if req.body.len() > MAX_SEND_BODY_BYTES {
+        return (
+            StatusCode::PAYLOAD_TOO_LARGE,
+            Json(ApiResponse { success: false, data: None, error: Some("Body exceeds 50 KB limit".into()) }),
+        );
+    }
+
     // Verify the sender mailbox exists and is active
     match state.db.mailbox_is_active(&email_address).await {
         Ok(true) => {}

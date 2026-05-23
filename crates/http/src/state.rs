@@ -15,5 +15,7 @@ pub(crate) struct AppState {
     pub(crate) mail_domain: String,
     pub(crate) mailbox_ttl: Duration,
     pub(crate) rate_limiter: RateLimiter,
+    pub(crate) send_rate_limiter: RateLimiter,
+    pub(crate) read_rate_limiter: RateLimiter,
     pub(crate) mailer: Option<Arc<OutboundMailer>>,
 }
