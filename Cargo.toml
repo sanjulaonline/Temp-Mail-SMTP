@@ -27,3 +27,4 @@ rustls-pemfile = "2"
 hickory-resolver = { version = "0.24", features = ["tokio-runtime"] }
 mail-auth = "0.5"
 webpki-roots = "0.26"
+base64 = "0.22"

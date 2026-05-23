@@ -19,3 +19,4 @@ rustls-pemfile = { workspace = true }
 hickory-resolver = { workspace = true }
 mail-auth = { workspace = true }
 webpki-roots = { workspace = true }
+base64 = { workspace = true }

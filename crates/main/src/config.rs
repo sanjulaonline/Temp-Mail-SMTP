@@ -36,6 +36,20 @@ pub struct Config {
     /// DKIM selector — must match the DNS TXT record `{selector}._domainkey.{domain}`.
     pub dkim_selector: Option<String>,
 
+    /// SMTP relay host (e.g. `email-smtp.us-east-1.amazonaws.com` for AWS SES).
+    /// When set together with relay_port/username/password, outbound mail is routed
+    /// through the relay instead of direct MX delivery.
+    pub smtp_relay_host: Option<String>,
+
+    /// SMTP relay port (typically 587 for STARTTLS).
+    pub smtp_relay_port: u16,
+
+    /// SMTP relay username (AWS SES SMTP credential, not your AWS access key).
+    pub smtp_relay_username: Option<String>,
+
+    /// SMTP relay password.
+    pub smtp_relay_password: Option<String>,
+
     /// Maximum total concurrent SMTP connections.
     pub smtp_max_connections: usize,
 
@@ -63,6 +77,13 @@ impl Config {
             smtp_tls_key: env::var("SMTP_TLS_KEY").ok(),
             dkim_private_key_path: env::var("DKIM_PRIVATE_KEY_PATH").ok(),
             dkim_selector: env::var("DKIM_SELECTOR").ok(),
+            smtp_relay_host: env::var("SMTP_RELAY_HOST").ok(),
+            smtp_relay_port: env::var("SMTP_RELAY_PORT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(587),
+            smtp_relay_username: env::var("SMTP_RELAY_USERNAME").ok(),
+            smtp_relay_password: env::var("SMTP_RELAY_PASSWORD").ok(),
             smtp_max_connections: env::var("SMTP_MAX_CONNECTIONS")
                 .ok()
                 .and_then(|v| v.parse().ok())

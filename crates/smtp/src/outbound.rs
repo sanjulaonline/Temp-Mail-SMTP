@@ -1,8 +1,10 @@
 //! Outbound SMTP delivery with DKIM signing.
+//! Supports both direct MX delivery and relay via an authenticated SMTP server (e.g. AWS SES).
 
 use std::sync::Arc;
 use std::time::Duration;
 
+use base64::Engine;
 use chrono::Utc;
 use hickory_resolver::TokioAsyncResolver;
 use hickory_resolver::config::{ResolverConfig, ResolverOpts};
@@ -13,15 +15,30 @@ use tokio::net::TcpStream;
 use tracing::{debug, info};
 use uuid::Uuid;
 
+/// Optional SMTP relay configuration (e.g. AWS SES, SendGrid).
+/// When set, outbound mail is routed through the relay instead of direct MX delivery.
+pub struct SmtpRelay {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+}
+
 pub struct OutboundMailer {
     mail_domain: String,
     dkim_selector: String,
     dkim_private_key_pem: String,
+    relay: Option<SmtpRelay>,
 }
 
 impl OutboundMailer {
     pub fn new(mail_domain: String, dkim_selector: String, dkim_private_key_pem: String) -> Self {
-        Self { mail_domain, dkim_selector, dkim_private_key_pem }
+        Self { mail_domain, dkim_selector, dkim_private_key_pem, relay: None }
+    }
+
+    pub fn with_relay(mut self, relay: SmtpRelay) -> Self {
+        self.relay = Some(relay);
+        self
     }
 
     pub async fn send(
@@ -31,13 +48,21 @@ impl OutboundMailer {
         subject: &str,
         body: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let to_domain = to.rsplit('@').next().ok_or("invalid recipient address")?;
-        let mx_host = resolve_mx(to_domain).await?;
-        info!("Delivering {} → {} via MX {}", from, to, mx_host);
-
         let raw = build_message(from, to, subject, body, &self.mail_domain);
         let signed = self.dkim_sign(raw.as_bytes())?;
-        deliver(&mx_host, from, to, &signed, &self.mail_domain).await
+
+        match &self.relay {
+            Some(relay) => {
+                info!("Delivering {} → {} via relay {}:{}", from, to, relay.host, relay.port);
+                deliver_via_relay(relay, from, to, &signed, &self.mail_domain).await
+            }
+            None => {
+                let to_domain = to.rsplit('@').next().ok_or("invalid recipient address")?;
+                let mx_host = resolve_mx(to_domain).await?;
+                info!("Delivering {} → {} via MX {}", from, to, mx_host);
+                deliver(&mx_host, from, to, &signed, &self.mail_domain).await
+            }
+        }
     }
 
     fn dkim_sign(&self, raw: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
@@ -48,7 +73,6 @@ impl OutboundMailer {
             .headers(["From", "To", "Subject", "Date", "Message-ID", "MIME-Version"])
             .sign(raw)?;
 
-        // Prepend DKIM-Signature header to the raw message
         let mut out = format!("{sig}\r\n").into_bytes();
         out.extend_from_slice(raw);
         Ok(out)
@@ -84,6 +108,61 @@ async fn resolve_mx(domain: &str) -> Result<String, Box<dyn std::error::Error + 
         .ok_or_else(|| format!("no MX records for {domain}").into())
 }
 
+/// Deliver through an authenticated relay (EHLO → STARTTLS → AUTH LOGIN → DATA).
+async fn deliver_via_relay(
+    relay: &SmtpRelay,
+    from: &str,
+    to: &str,
+    message: &[u8],
+    our_domain: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let stream = tokio::time::timeout(
+        Duration::from_secs(30),
+        TcpStream::connect(format!("{}:{}", relay.host, relay.port)),
+    )
+    .await
+    .map_err(|_| "connection to relay timed out")??;
+
+    let (r, w) = stream.into_split();
+    let mut reader = BufReader::new(r);
+    let mut writer = w;
+
+    expect(&mut reader, "220").await?;
+
+    send_cmd(&mut writer, &format!("EHLO {our_domain}")).await?;
+    read_multiline(&mut reader).await?;
+
+    // Relay connections require STARTTLS before AUTH
+    send_cmd(&mut writer, "STARTTLS").await?;
+    expect(&mut reader, "220").await?;
+
+    let tcp = reader
+        .into_inner()
+        .reunite(writer)
+        .map_err(|_| "failed to reunite TCP halves")?;
+
+    let connector = build_tls_connector()?;
+    let server_name = rustls::pki_types::ServerName::try_from(relay.host.clone())?;
+    let tls = connector.connect(server_name, tcp).await?;
+    let (tr, mut tw) = tokio::io::split(tls);
+    let mut tr = BufReader::new(tr);
+
+    send_cmd(&mut tw, &format!("EHLO {our_domain}")).await?;
+    read_multiline(&mut tr).await?;
+
+    // AUTH LOGIN
+    send_cmd(&mut tw, "AUTH LOGIN").await?;
+    expect(&mut tr, "334").await?;
+    let enc = base64::engine::general_purpose::STANDARD;
+    tw.write_all(format!("{}\r\n", enc.encode(&relay.username)).as_bytes()).await?;
+    expect(&mut tr, "334").await?;
+    tw.write_all(format!("{}\r\n", enc.encode(&relay.password)).as_bytes()).await?;
+    expect(&mut tr, "235").await?;
+
+    send_mail(&mut tr, &mut tw, from, to, message).await
+}
+
+/// Direct MX delivery (plain TCP port 25, optional STARTTLS).
 async fn deliver(
     mx_host: &str,
     from: &str,
@@ -102,10 +181,8 @@ async fn deliver(
     let mut reader = BufReader::new(r);
     let mut writer = w;
 
-    // Read server banner
     expect(&mut reader, "220").await?;
 
-    // EHLO and capture capabilities
     send_cmd(&mut writer, &format!("EHLO {our_domain}")).await?;
     let caps = read_multiline(&mut reader).await?;
     let has_starttls = caps.iter().any(|l| l.to_ascii_uppercase().contains("STARTTLS"));

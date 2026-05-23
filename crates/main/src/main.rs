@@ -4,7 +4,7 @@ use tracing::{error, info, warn};
 use phantom_database::Database;
 use phantom_http::HttpServer;
 use phantom_mqtt::MqttPublisher;
-use phantom_smtp::{load_tls_acceptor, OutboundMailer, SmtpServer};
+use phantom_smtp::{load_tls_acceptor, OutboundMailer, SmtpRelay, SmtpServer};
 use phantom_types::{Email, MlMeta};
 
 mod config;
@@ -123,8 +123,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mailer = match (&cfg.dkim_private_key_path, &cfg.dkim_selector) {
         (Some(key_path), Some(selector)) => match std::fs::read_to_string(key_path) {
             Ok(pem) => {
+                let mut mailer = OutboundMailer::new(cfg.mail_domain.clone(), selector.clone(), pem);
+
+                // Attach relay if all four relay env vars are set
+                match (&cfg.smtp_relay_host, &cfg.smtp_relay_username, &cfg.smtp_relay_password) {
+                    (Some(host), Some(user), Some(pass)) => {
+                        info!("Outbound relay enabled: {}:{}", host, cfg.smtp_relay_port);
+                        mailer = mailer.with_relay(SmtpRelay {
+                            host: host.clone(),
+                            port: cfg.smtp_relay_port,
+                            username: user.clone(),
+                            password: pass.clone(),
+                        });
+                    }
+                    _ => info!("No SMTP relay configured — will attempt direct MX delivery"),
+                }
+
                 info!("Outbound mail enabled (DKIM selector={})", selector);
-                Some(OutboundMailer::new(cfg.mail_domain.clone(), selector.clone(), pem))
+                Some(mailer)
             }
             Err(e) => {
                 error!("Failed to read DKIM key {}: {} — outbound mail disabled", key_path, e);
