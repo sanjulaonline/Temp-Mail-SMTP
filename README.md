@@ -62,6 +62,33 @@ SMTP on `:25`, HTTP API on `:8080`.
 
 ---
 
+## Architecture
+
+```
+phantom-main        binary — config, startup
+├── phantom-smtp    SMTP server + outbound mailer + MIME parser
+├── phantom-http    HTTP API (Axum) + rate limiting + security headers
+├── phantom-database PostgreSQL client
+└── phantom-types   shared domain structs
+```
+
+**Inbound email**
+```
+Internet → TCP :25 → SMTP state machine (EHLO/STARTTLS/MAIL/RCPT/DATA)
+  → MIME parse (extract text/plain, decode quoted-printable)
+  → store in PostgreSQL
+```
+
+**Outbound email**
+```
+POST /mailboxes/:addr/send
+  → IP rate limit (5/day) + mailbox rate limit (5/day, VPN-resistant)
+  → build RFC 2822 message → DKIM sign (RSA-SHA256)
+  → SMTP relay (Resend, port 587, STARTTLS + AUTH LOGIN)
+```
+
+---
+
 ## HTTP API
 
 ```bash
