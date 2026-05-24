@@ -80,7 +80,15 @@ impl OutboundMailer {
     }
 }
 
+/// Strip CR and LF so user input cannot inject extra headers.
+fn sanitize_header(value: &str) -> String {
+    value.replace(['\r', '\n'], "")
+}
+
 fn build_message(from: &str, to: &str, subject: &str, body: &str, domain: &str, web_url: &str) -> String {
+    let from = sanitize_header(from);
+    let to = sanitize_header(to);
+    let subject = sanitize_header(subject);
     let date = Utc::now().format("%a, %d %b %Y %H:%M:%S +0000");
     let msg_id = Uuid::new_v4();
     format!(

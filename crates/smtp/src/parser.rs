@@ -9,7 +9,11 @@ use phantom_types::Email;
 
 use crate::store::MailStore;
 
+/// 10 MB — matches the SIZE limit advertised in EHLO.
+const MAX_DATA_BYTES: usize = 10 * 1024 * 1024;
+
 /// Read the DATA payload until the RFC 5321 end-of-data marker (`\r\n.\r\n`).
+/// Returns an error if the message exceeds [`MAX_DATA_BYTES`].
 pub(crate) async fn read_smtp_data<R: tokio::io::AsyncRead + Unpin>(
     reader: &mut BufReader<R>,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
@@ -34,6 +38,10 @@ pub(crate) async fn read_smtp_data<R: tokio::io::AsyncRead + Unpin>(
             .unwrap_or_else(|| stripped.to_string());
         data.push_str(&unstuffed);
         data.push_str("\r\n");
+
+        if data.len() > MAX_DATA_BYTES {
+            return Err("Message too large (limit 10 MB)".into());
+        }
     }
 
     Ok(data)

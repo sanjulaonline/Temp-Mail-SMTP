@@ -35,14 +35,20 @@ RUN cargo build --release -p phantom-main
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates libssl3 \
- && rm -rf /var/lib/apt/lists/*
+ && apt-get install -y --no-install-recommends ca-certificates libssl3 libcap2-bin curl \
+ && rm -rf /var/lib/apt/lists/* \
+ && adduser --disabled-password --gecos '' --uid 1001 phantom
 
 WORKDIR /app
 
 COPY --from=builder /app/target/release/phantom-main ./phantom-mail
 COPY migrations/ migrations/
 
+# Allow binding to port 25 without root
+RUN setcap 'cap_net_bind_service=+ep' ./phantom-mail \
+ && chown -R phantom:phantom /app
+
 EXPOSE 25 8080
 
+USER phantom
 ENTRYPOINT ["./phantom-mail"]
