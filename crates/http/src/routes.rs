@@ -29,7 +29,7 @@ pub(crate) async fn create_mailbox_handler(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     State(state): State<AppState>,
 ) -> (StatusCode, Json<ApiResponse<TemporaryMailbox>>) {
-    if !state.rate_limiter.check(addr.ip()) {
+    if !state.rate_limiter.check(addr.ip().to_owned()) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(ApiResponse {
@@ -47,7 +47,7 @@ pub(crate) async fn get_emails_handler(
     Path(email_address): Path<String>,
     State(state): State<AppState>,
 ) -> (StatusCode, Json<ApiResponse<Vec<Email>>>) {
-    if !state.read_rate_limiter.check(addr.ip()) {
+    if !state.read_rate_limiter.check(addr.ip().to_owned()) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
             Json(ApiResponse {
@@ -66,10 +66,17 @@ pub(crate) async fn send_email_handler(
     State(state): State<AppState>,
     Json(req): Json<SendRequest>,
 ) -> (StatusCode, Json<ApiResponse<()>>) {
-    if !state.send_rate_limiter.check(addr.ip()) {
+    if !state.send_rate_limiter.check(addr.ip().to_owned()) {
         return (
             StatusCode::TOO_MANY_REQUESTS,
-            Json(ApiResponse { success: false, data: None, error: Some("Rate limit exceeded — max 5 sends per minute".into()) }),
+            Json(ApiResponse { success: false, data: None, error: Some("Daily send limit reached — max 5 emails per day per IP".into()) }),
+        );
+    }
+
+    if !state.mailbox_send_limiter.check(email_address.clone()) {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(ApiResponse { success: false, data: None, error: Some("Daily send limit reached — max 5 emails per day from this address".into()) }),
         );
     }
 
