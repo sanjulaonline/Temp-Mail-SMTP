@@ -24,27 +24,50 @@ Send and receive real email with DKIM signing. Auto-expires in 24 hours.
 
 ## Architecture
 
+### Crate layout
+
 ```
-phantom-main        binary — config, startup
-├── phantom-smtp    SMTP server + outbound mailer + MIME parser
-├── phantom-http    HTTP API (Axum) + rate limiting + security headers
-├── phantom-database PostgreSQL client
-└── phantom-types   shared domain structs
+phantom-main        binary — wires everything together, starts servers
+├── phantom-smtp    SMTP server (RFC 5321 state machine) + MIME parser + outbound mailer
+├── phantom-http    Axum HTTP API + rate limiters + CORS + security headers
+├── phantom-mqtt    optional MQTT publisher (email arrival events)
+├── phantom-database tokio-postgres client, parameterized queries
+└── phantom-types   shared structs — Email, TemporaryMailbox, MlMeta
 ```
 
-**Inbound**
+### Inbound email flow
+
 ```
-Internet → TCP :25 → SMTP state machine (EHLO/STARTTLS/MAIL/RCPT/DATA)
-  → MIME parse → store in PostgreSQL
+Internet
+  → TCP :25 → SmtpServer
+      → connection rate limit (per-IP semaphore, max 5 concurrent / 100 total)
+      → spawn tokio task per connection
+          → RFC 5321 state machine: EHLO → STARTTLS → MAIL FROM → RCPT TO → DATA
+          → 10 MB DATA cap (drops oversized messages)
+          → MIME parse (mail-parser): extracts text/plain, decodes quoted-printable
+          → store_email() → PostgreSQL
+          → ml_tx.send() → ML sidecar task (async, non-blocking)  [optional]
+          → MqttPublisher.publish() → MQTT broker                  [optional]
 ```
 
-**Outbound**
+### Outbound email flow
+
 ```
-POST /mailboxes/:addr/send
-  → IP rate limit + mailbox rate limit
-  → build RFC 2822 → DKIM sign (RSA-SHA256)
-  → Resend SMTP relay (port 587, STARTTLS + AUTH LOGIN)
+POST /mailboxes/:address/send
+  → IP rate limit   (5 emails / IP / day)
+  → mailbox rate limit (5 emails / mailbox / day) ← blocks VPN bypass
+  → body size check (50 KB)
+  → mailbox_is_active() → PostgreSQL
+  → build RFC 2822 message (sanitize headers, add footer)
+  → DKIM sign (mail-auth crate, RSA-SHA256)
+  → SMTP relay: EHLO → STARTTLS → AUTH LOGIN → DATA  (Resend port 587)
+     └─ fallback: direct MX delivery if no relay configured
 ```
+
+### Optional components
+
+- **ML sidecar** (Python FastAPI) — OTP extraction, spam scoring, email classification. Runs as a separate process; phantom-main sends emails to it over an mpsc channel.
+- **MQTT** — publishes an event on every inbound email. Useful for webhooks or real-time notification pipelines.
 
 ---
 
