@@ -12,6 +12,9 @@ pub struct Config {
     /// The mail domain used in SMTP greetings and generated email addresses.
     pub mail_domain: String,
 
+    /// Public website URL shown in outbound email footers.
+    pub web_url: String,
+
     /// How often expired mailboxes are purged, in seconds.
     pub cleanup_interval_secs: u64,
 
@@ -67,6 +70,8 @@ impl Config {
                 .unwrap_or_else(|_| "0.0.0.0:8080".to_string()),
             mail_domain: env::var("MAIL_DOMAIN")
                 .unwrap_or_else(|_| "localhost".to_string()),
+            web_url: env::var("PHANTOM_WEB_URL")
+                .unwrap_or_else(|_| "https://phantom-mail.sanjula.online".to_string()),
             cleanup_interval_secs: env::var("MAILBOX_CLEANUP_INTERVAL_SECS")
                 .ok()
                 .and_then(|v| v.parse().ok())

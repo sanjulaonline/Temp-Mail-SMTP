@@ -123,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mailer = match (&cfg.dkim_private_key_path, &cfg.dkim_selector) {
         (Some(key_path), Some(selector)) => match std::fs::read_to_string(key_path) {
             Ok(pem) => {
-                let mut mailer = OutboundMailer::new(cfg.mail_domain.clone(), selector.clone(), pem);
+                let mut mailer = OutboundMailer::new(cfg.mail_domain.clone(), selector.clone(), pem, cfg.web_url.clone());
 
                 // Attach relay if all four relay env vars are set
                 match (&cfg.smtp_relay_host, &cfg.smtp_relay_username, &cfg.smtp_relay_password) {

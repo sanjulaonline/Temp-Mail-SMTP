@@ -23,6 +23,15 @@ type Email = {
   timestamp: string;
 };
 
+function formatBody(raw: string): { text: string; quoted: boolean }[] {
+  return raw
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd()
+    .split("\n")
+    .map((line) => ({ text: line, quoted: line.startsWith(">") }));
+}
+
 function fmtDate(ts: string): string {
   const d = new Date(ts);
   if (Number.isNaN(d.getTime())) return "";
@@ -36,7 +45,7 @@ function fmtDate(ts: string): string {
 }
 
 export default function Home() {
-  const [view, setView] = useState<"generate" | "inbox" | "reader">(
+  const [view, setView] = useState<"generate" | "inbox" | "compose" | "reader">(
     "generate",
   );
 
@@ -46,6 +55,10 @@ export default function Home() {
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isSending, setIsSending] = useState(false);
+  const [composeTo, setComposeTo] = useState("");
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeBody, setComposeBody] = useState("");
   const [refreshLabel, setRefreshLabel] = useState("Checking…");
   const [copyLabel, setCopyLabel] = useState("Copy");
 
@@ -148,6 +161,31 @@ export default function Home() {
 
   function showInbox() {
     setView("inbox");
+  }
+
+  async function sendEmail() {
+    if (!currentEmail) return;
+    setIsSending(true);
+    try {
+      const encoded = encodeURIComponent(currentEmail);
+      const resp = await fetch(`/mailboxes/${encoded}/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: composeTo, subject: composeSubject, body: composeBody }),
+      });
+      const json = (await resp.json()) as ApiResponse<null>;
+      if (!json.success) throw new Error(json.error || "Failed to send");
+      showToast("Email sent!");
+      setComposeTo("");
+      setComposeSubject("");
+      setComposeBody("");
+      setView("inbox");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to send";
+      showToast("⚠ " + msg);
+    } finally {
+      setIsSending(false);
+    }
   }
 
   function openEmail(idx: number) {
@@ -278,6 +316,9 @@ export default function Home() {
                 <span className="refresh-label" id="refresh-label">
                   {refreshLabel}
                 </span>
+                <button className="compose-btn" onClick={() => setView("compose")}>
+                  ✉ Compose
+                </button>
                 <button className="new-btn" onClick={reset}>
                   + New Address
                 </button>
@@ -334,6 +375,62 @@ export default function Home() {
         </section>
 
         <section
+          id="compose-section"
+          style={{ display: view === "compose" ? "block" : "none" }}
+        >
+          <button className="back-btn" onClick={showInbox}>
+            ← Back to Inbox
+          </button>
+          <div className="card">
+            <div style={{ marginBottom: 20 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>New Message</h2>
+              <p className="compose-from">
+                From: <span>{currentEmail ?? ""}</span>
+              </p>
+            </div>
+            <div className="compose-form">
+              <div className="form-field">
+                <label>To</label>
+                <input
+                  type="email"
+                  placeholder="recipient@example.com"
+                  value={composeTo}
+                  onChange={(e) => setComposeTo(e.target.value)}
+                />
+              </div>
+              <div className="form-field">
+                <label>Subject</label>
+                <input
+                  type="text"
+                  placeholder="Enter subject…"
+                  maxLength={200}
+                  value={composeSubject}
+                  onChange={(e) => setComposeSubject(e.target.value)}
+                />
+              </div>
+              <div className="form-field">
+                <label>Message</label>
+                <textarea
+                  placeholder="Write your message…"
+                  value={composeBody}
+                  onChange={(e) => setComposeBody(e.target.value)}
+                />
+              </div>
+              <div className="compose-actions">
+                <button className="cancel-btn" onClick={showInbox}>Cancel</button>
+                <button
+                  className="send-btn"
+                  onClick={sendEmail}
+                  disabled={isSending || !composeTo || !composeSubject || !composeBody}
+                >
+                  {isSending ? <span className="spinner" /> : "Send"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section
           id="reader-section"
           style={{ display: view === "reader" ? "block" : "none" }}
         >
@@ -354,7 +451,16 @@ export default function Home() {
               </div>
             </div>
             <div className="reader-body" id="reader-body">
-              {selectedEmail?.body || "(no body)"}
+              {selectedEmail
+                ? formatBody(selectedEmail.body).map((line, i) => (
+                    <span
+                      key={i}
+                      style={line.quoted ? { color: "var(--muted)", display: "block" } : { display: "block" }}
+                    >
+                      {line.text || " "}
+                    </span>
+                  ))
+                : "(no body)"}
             </div>
           </div>
         </section>

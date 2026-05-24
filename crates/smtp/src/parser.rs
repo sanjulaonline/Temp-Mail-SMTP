@@ -1,6 +1,7 @@
 //! SMTP path and body parsing helpers, plus email storage.
 
 use chrono::Utc;
+use mail_parser::MessageParser;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use uuid::Uuid;
 
@@ -61,24 +62,26 @@ pub(crate) fn parse_smtp_path(raw: &str) -> Option<String> {
     }
 }
 
-/// Extract `Subject` header and body from a raw DATA payload.
+/// Extract subject and plain-text body from a raw RFC 5322 / MIME DATA payload.
+/// Handles multipart messages, quoted-printable and base64 decoding,
+/// and encoded subject headers (=?UTF-8?Q?...?=).
 pub(crate) fn parse_subject_and_body(data: &str) -> (String, String) {
-    let (headers, body) = data.split_once("\r\n\r\n").unwrap_or((data, ""));
+    let msg = MessageParser::default().parse(data.as_bytes());
 
-    let mut subject: Option<String> = None;
-    for line in headers.split("\r\n") {
-        if let Some(prefix) = line.get(..8) {
-            if prefix.eq_ignore_ascii_case("subject:") {
-                subject = Some(line.get(8..).unwrap_or("").trim().to_string());
-                break;
-            }
-        }
-    }
+    let subject = msg
+        .as_ref()
+        .and_then(|m| m.subject())
+        .unwrap_or("No Subject")
+        .to_string();
 
-    (
-        subject.unwrap_or_else(|| "No Subject".to_string()),
-        body.to_string(),
-    )
+    // Prefer text/plain; fall back to stripping tags from text/html.
+    let body = msg
+        .as_ref()
+        .and_then(|m| m.body_text(0))
+        .map(|s| s.into_owned())
+        .unwrap_or_default();
+
+    (subject, body)
 }
 
 /// Parse and store one inbound email. Returns the stored [`Email`] so callers
@@ -131,6 +134,28 @@ mod tests {
         let data = "From: a@example.com\r\nSubject: Hello\r\n\r\nBody line\r\n";
         let (subject, body) = parse_subject_and_body(data);
         assert_eq!(subject, "Hello");
-        assert_eq!(body, "Body line\r\n");
+        assert!(body.contains("Body line"), "body: {body:?}");
+    }
+
+    #[test]
+    fn parse_subject_and_body_handles_multipart() {
+        let data = "From: a@example.com\r\n\
+            Subject: Test\r\n\
+            MIME-Version: 1.0\r\n\
+            Content-Type: multipart/alternative; boundary=\"bound\"\r\n\
+            \r\n\
+            --bound\r\n\
+            Content-Type: text/plain; charset=\"UTF-8\"\r\n\
+            \r\n\
+            Plain text here\r\n\
+            --bound\r\n\
+            Content-Type: text/html; charset=\"UTF-8\"\r\n\
+            \r\n\
+            <p>HTML here</p>\r\n\
+            --bound--\r\n";
+        let (subject, body) = parse_subject_and_body(data);
+        assert_eq!(subject, "Test");
+        assert!(body.contains("Plain text here"), "body: {body:?}");
+        assert!(!body.contains("<p>"), "should not contain HTML tags: {body:?}");
     }
 }

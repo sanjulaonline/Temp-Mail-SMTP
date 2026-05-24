@@ -80,6 +80,18 @@ pub(crate) async fn send_email_handler(
         );
     }
 
+    // Basic recipient address validation
+    let at = req.to.find('@');
+    if at.map(|i| i == 0 || i == req.to.len() - 1).unwrap_or(true)
+        || req.to.len() > 254
+        || req.subject.len() > 200
+    {
+        return (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(ApiResponse { success: false, data: None, error: Some("Invalid recipient address or subject too long".into()) }),
+        );
+    }
+
     // Verify the sender mailbox exists and is active
     match state.db.mailbox_is_active(&email_address).await {
         Ok(true) => {}

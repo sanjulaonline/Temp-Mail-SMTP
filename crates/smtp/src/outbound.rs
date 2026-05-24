@@ -29,11 +29,12 @@ pub struct OutboundMailer {
     dkim_selector: String,
     dkim_private_key_pem: String,
     relay: Option<SmtpRelay>,
+    web_url: String,
 }
 
 impl OutboundMailer {
-    pub fn new(mail_domain: String, dkim_selector: String, dkim_private_key_pem: String) -> Self {
-        Self { mail_domain, dkim_selector, dkim_private_key_pem, relay: None }
+    pub fn new(mail_domain: String, dkim_selector: String, dkim_private_key_pem: String, web_url: String) -> Self {
+        Self { mail_domain, dkim_selector, dkim_private_key_pem, relay: None, web_url }
     }
 
     pub fn with_relay(mut self, relay: SmtpRelay) -> Self {
@@ -48,7 +49,7 @@ impl OutboundMailer {
         subject: &str,
         body: &str,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let raw = build_message(from, to, subject, body, &self.mail_domain);
+        let raw = build_message(from, to, subject, body, &self.mail_domain, &self.web_url);
         let signed = self.dkim_sign(raw.as_bytes())?;
 
         match &self.relay {
@@ -79,7 +80,7 @@ impl OutboundMailer {
     }
 }
 
-fn build_message(from: &str, to: &str, subject: &str, body: &str, domain: &str) -> String {
+fn build_message(from: &str, to: &str, subject: &str, body: &str, domain: &str, web_url: &str) -> String {
     let date = Utc::now().format("%a, %d %b %Y %H:%M:%S +0000");
     let msg_id = Uuid::new_v4();
     format!(
@@ -91,7 +92,10 @@ fn build_message(from: &str, to: &str, subject: &str, body: &str, domain: &str) 
          MIME-Version: 1.0\r\n\
          Content-Type: text/plain; charset=UTF-8\r\n\
          \r\n\
-         {body}\r\n"
+         {body}\r\n\
+         \r\n\
+         --\r\n\
+         Sent via Phantom Mail · {web_url}\r\n"
     )
 }
 
