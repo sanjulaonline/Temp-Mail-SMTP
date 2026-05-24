@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://phantom-mail.sanjula.online/sitemap.xml
