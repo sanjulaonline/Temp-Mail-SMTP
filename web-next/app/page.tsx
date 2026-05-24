@@ -423,7 +423,7 @@ export default function Home() {
                   onClick={sendEmail}
                   disabled={isSending || !composeTo || !composeSubject || !composeBody}
                 >
-                  {isSending ? <span className="spinner" /> : "Send"}
+                  {isSending ? <span className="spinner" /> : "Send Email"}
                 </button>
               </div>
             </div>
