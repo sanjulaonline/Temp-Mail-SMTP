@@ -507,29 +507,38 @@ header p {
 
 .compose-actions {
   display: flex;
+  flex-direction: column;
   gap: 10px;
-  justify-content: flex-end;
-  margin-top: 4px;
+  margin-top: 8px;
 }
 
 .send-btn {
   background: linear-gradient(135deg, var(--accent), var(--accent2));
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   color: #fff;
   cursor: pointer;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
-  padding: 10px 24px;
-  transition: opacity 0.2s;
+  padding: 14px 36px;
+  width: 100%;
+  transition: opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+  box-shadow: 0 0 24px var(--accent-glow);
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
 }
 
 .send-btn:hover:not(:disabled) {
-  opacity: 0.85;
+  opacity: 0.9;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 32px var(--accent-glow);
+}
+
+.send-btn:active {
+  transform: translateY(0);
 }
 
 .send-btn:disabled {
@@ -539,19 +548,18 @@ header p {
 
 .cancel-btn {
   background: none;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  border: none;
   color: var(--muted);
   cursor: pointer;
   font-family: inherit;
-  font-size: 14px;
-  padding: 10px 20px;
-  transition: color 0.2s, border-color 0.2s;
+  font-size: 13px;
+  padding: 4px 0;
+  text-align: center;
+  transition: color 0.2s;
 }
 
 .cancel-btn:hover {
   color: var(--text);
-  border-color: var(--accent);
 }
 
 .compose-from {
