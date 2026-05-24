@@ -317,7 +317,7 @@ export default function Home() {
                   {refreshLabel}
                 </span>
                 <button className="compose-btn" onClick={() => setView("compose")}>
-                  ✉ Compose
+                  ✉ Send Email
                 </button>
                 <button className="new-btn" onClick={reset}>
                   + New Address
