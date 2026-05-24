@@ -565,6 +565,127 @@ header p {
   font-weight: 600;
 }
 
+/* ── Policy page ── */
+.policy-page {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  padding: 40px 20px 80px;
+}
+
+.policy-container {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.policy-back {
+  display: inline-block;
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: none;
+  margin-bottom: 32px;
+  transition: color 0.2s;
+}
+
+.policy-back:hover {
+  color: var(--text);
+}
+
+.policy-page h1 {
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #a855f7, #7c3aed);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+}
+
+.policy-updated {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 40px;
+}
+
+.policy-page section {
+  margin-bottom: 36px;
+}
+
+.policy-page h2 {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.policy-page p {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #c0c0d8;
+  margin-bottom: 12px;
+}
+
+.policy-page ul {
+  margin: 10px 0 12px 20px;
+}
+
+.policy-page li {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #c0c0d8;
+  margin-bottom: 4px;
+}
+
+.policy-page a {
+  color: var(--accent2);
+  text-decoration: none;
+}
+
+.policy-page a:hover {
+  text-decoration: underline;
+}
+
+.policy-page code {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 13px;
+  color: var(--accent2);
+}
+
+/* ── Footer ── */
+.site-footer {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  padding: 32px 20px 40px;
+  font-size: 13px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+}
+
+.footer-heart {
+  color: #e05fa0;
+}
+
+.footer-link {
+  color: var(--accent2);
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.footer-link:hover {
+  opacity: 0.75;
+  text-decoration: underline;
+}
+
+.footer-muted {
+  color: var(--muted);
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar {
   width: 6px;

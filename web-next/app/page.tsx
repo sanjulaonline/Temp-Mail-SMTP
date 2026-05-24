@@ -469,6 +469,27 @@ export default function Home() {
       <div id="toast" className={toastVisible ? "show" : ""}>
         {toastMessage}
       </div>
+
+      <footer className="site-footer">
+        <p>
+          Built with{" "}
+          <span className="footer-heart">♥</span>{" "}
+          by{" "}
+          <a href="https://www.sanjula.online" target="_blank" rel="noopener noreferrer" className="footer-link">
+            Sanjula
+          </a>
+          {" "}·{" "}
+          <a href="mailto:sanjula692@gmail.com" className="footer-link">
+            Contact
+          </a>
+          {" "}·{" "}
+          <a href="/policy" className="footer-link">
+            Email Policy
+          </a>
+          {" "}·{" "}
+          <span className="footer-muted">Open source &amp; free forever</span>
+        </p>
+      </footer>
     </>
   );
 }

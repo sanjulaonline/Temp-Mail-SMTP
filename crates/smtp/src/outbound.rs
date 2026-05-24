@@ -103,7 +103,11 @@ fn build_message(from: &str, to: &str, subject: &str, body: &str, domain: &str, 
          {body}\r\n\
          \r\n\
          --\r\n\
-         Sent via Phantom Mail · {web_url}\r\n"
+         Sent via Phantom Mail · {web_url}\r\n\
+         This email was composed and sent by a user of Phantom Mail.\r\n\
+         The service operator is not responsible for its content.\r\n\
+         To report abuse: sanjula692@gmail.com · Policy: {web_url}/policy\r\n\
+         Created by Sanjula · https://www.sanjula.online\r\n"
     )
 }
 
